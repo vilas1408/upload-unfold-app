@@ -1,0 +1,143 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const { symbol, companyName } = await req.json();
+    console.log('Predicting stock for:', symbol, companyName);
+
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    if (!LOVABLE_API_KEY) {
+      throw new Error('LOVABLE_API_KEY is not configured');
+    }
+
+    // Get historical data (mock for now - in production, integrate with real API)
+    const historicalData = generateMockHistoricalData();
+    
+    // Use Lovable AI to analyze and predict
+    const systemPrompt = `You are an expert stock market analyst with deep knowledge of technical analysis and machine learning. 
+Based on historical price data, predict tomorrow's opening and closing prices for the stock.
+Provide your analysis in a structured format.`;
+
+    const userPrompt = `Analyze this stock: ${companyName} (${symbol})
+
+Historical data for the last 7 days:
+${historicalData.map(d => `${d.date}: Open ₹${d.open}, Close ₹${d.close}, Volume: ${d.volume}`).join('\n')}
+
+Current price: ₹${historicalData[historicalData.length - 1].close}
+
+Predict tomorrow's opening and closing prices. Consider:
+1. Recent price trends and momentum
+2. Volume patterns
+3. Support and resistance levels
+4. Market sentiment
+
+Provide your prediction in this exact JSON format:
+{
+  "openingPrice": <number>,
+  "closingPrice": <number>,
+  "reason": "<detailed analysis explaining the prediction>",
+  "confidence": "<percentage>",
+  "predictionDate": "<YYYY-MM-DD>"
+}`;
+
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: 0.7,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('AI gateway error:', response.status, errorText);
+      throw new Error(`AI gateway error: ${response.status}`);
+    }
+
+    const aiResponse = await response.json();
+    const content = aiResponse.choices[0].message.content;
+    console.log('AI Response:', content);
+
+    // Extract JSON from response
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('Could not parse AI response');
+    }
+
+    const prediction = JSON.parse(jsonMatch[0]);
+    
+    // Add tomorrow's date
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    prediction.predictionDate = tomorrow.toISOString().split('T')[0];
+
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        prediction,
+        historicalData 
+      }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+
+  } catch (error) {
+    console.error('Error in predict-stock:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: errorMessage 
+      }),
+      { 
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  }
+});
+
+function generateMockHistoricalData() {
+  const data = [];
+  const basePrice = 2400;
+  const today = new Date();
+  
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date(today);
+    date.setDate(date.getDate() - i);
+    
+    const randomChange = (Math.random() - 0.5) * 50;
+    const open = basePrice + randomChange + (6 - i) * 10;
+    const close = open + (Math.random() - 0.5) * 30;
+    const volume = Math.floor(1000000 + Math.random() * 500000);
+    
+    data.push({
+      date: date.toISOString().split('T')[0],
+      open: Math.round(open * 100) / 100,
+      close: Math.round(close * 100) / 100,
+      high: Math.round((Math.max(open, close) + Math.random() * 20) * 100) / 100,
+      low: Math.round((Math.min(open, close) - Math.random() * 20) * 100) / 100,
+      volume
+    });
+  }
+  
+  return data;
+}

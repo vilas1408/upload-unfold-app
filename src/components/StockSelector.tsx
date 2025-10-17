@@ -2,6 +2,7 @@ import { Search } from "lucide-react";
 import { Input } from "./ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
+import { useState } from "react";
 
 const popularStocks = [
   { symbol: "RELIANCE.NS", name: "Reliance Industries", price: "2,456.50", change: "+2.45%" },
@@ -12,10 +13,21 @@ const popularStocks = [
   { symbol: "HINDUNILVR.NS", name: "Hindustan Unilever", price: "2,345.80", change: "-1.05%" },
 ];
 
-const StockSelector = () => {
+interface StockSelectorProps {
+  onSelectStock: (symbol: string, name: string) => void;
+}
+
+const StockSelector = ({ onSelectStock }: StockSelectorProps) => {
+  const [searchTerm, setSearchTerm] = useState("");
+
   const getChangeColor = (change: string) => {
     return change.startsWith('+') ? 'text-success' : 'text-danger';
   };
+
+  const filteredStocks = popularStocks.filter(stock => 
+    stock.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    stock.symbol.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <section id="dashboard" className="py-20 px-4">
@@ -36,16 +48,19 @@ const StockSelector = () => {
             <Input 
               placeholder="Search for stocks (e.g., TCS, Reliance, HDFC...)"
               className="pl-12 py-6 text-lg glass-strong border-border"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
         </div>
 
         {/* Popular Stocks Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {popularStocks.map((stock) => (
+          {filteredStocks.map((stock) => (
             <Card 
               key={stock.symbol} 
               className="glass-strong border-border hover:border-primary transition-all duration-300 cursor-pointer group"
+              onClick={() => onSelectStock(stock.symbol, stock.name)}
             >
               <CardHeader>
                 <div className="flex justify-between items-start">
