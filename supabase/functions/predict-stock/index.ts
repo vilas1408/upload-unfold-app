@@ -19,8 +19,8 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY is not configured');
     }
 
-    // Get historical data (mock for now - in production, integrate with real API)
-    const historicalData = generateMockHistoricalData();
+    // Fetch real historical data from Yahoo Finance
+    const historicalData = await fetchRealStockData(symbol);
     
     // Use Lovable AI to analyze and predict
     const systemPrompt = `You are an expert stock market analyst with deep knowledge of technical analysis and machine learning. 
@@ -30,7 +30,7 @@ Provide your analysis in a structured format.`;
     const userPrompt = `Analyze this stock: ${companyName} (${symbol})
 
 Historical data for the last 7 days:
-${historicalData.map(d => `${d.date}: Open ₹${d.open}, Close ₹${d.close}, Volume: ${d.volume}`).join('\n')}
+${historicalData.map((d: any) => `${d.date}: Open ₹${d.open}, Close ₹${d.close}, Volume: ${d.volume}`).join('\n')}
 
 Current price: ₹${historicalData[historicalData.length - 1].close}
 
@@ -114,6 +114,50 @@ Provide your prediction in this exact JSON format:
     );
   }
 });
+
+async function fetchRealStockData(symbol: string) {
+  try {
+    // Calculate date range (last 7 days)
+    const endDate = Math.floor(Date.now() / 1000);
+    const startDate = endDate - (7 * 24 * 60 * 60);
+    
+    // Fetch from Yahoo Finance API
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startDate}&period2=${endDate}&interval=1d`;
+    
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error('Failed to fetch stock data');
+    }
+    
+    const data = await response.json();
+    const result = data.chart.result[0];
+    
+    if (!result || !result.timestamp) {
+      throw new Error('Invalid stock data received');
+    }
+    
+    const timestamps = result.timestamp;
+    const quotes = result.indicators.quote[0];
+    
+    const historicalData = timestamps.map((timestamp: number, index: number) => {
+      const date = new Date(timestamp * 1000);
+      return {
+        date: date.toISOString().split('T')[0],
+        open: Math.round(quotes.open[index] * 100) / 100,
+        close: Math.round(quotes.close[index] * 100) / 100,
+        high: Math.round(quotes.high[index] * 100) / 100,
+        low: Math.round(quotes.low[index] * 100) / 100,
+        volume: quotes.volume[index]
+      };
+    });
+    
+    return historicalData;
+  } catch (error) {
+    console.error('Error fetching real stock data:', error);
+    // Fallback to mock data if API fails
+    return generateMockHistoricalData();
+  }
+}
 
 function generateMockHistoricalData() {
   const data = [];
