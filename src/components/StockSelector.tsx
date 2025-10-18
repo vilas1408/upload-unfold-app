@@ -2,16 +2,17 @@ import { Search } from "lucide-react";
 import { Input } from "./ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { Skeleton } from "./ui/skeleton";
 
-const popularStocks = [
-  { symbol: "RELIANCE.NS", name: "Reliance Industries", price: "2,456.50", change: "+2.45%" },
-  { symbol: "TCS.NS", name: "Tata Consultancy Services", price: "3,678.90", change: "+1.82%" },
-  { symbol: "HDFCBANK.NS", name: "HDFC Bank", price: "1,654.30", change: "-0.45%" },
-  { symbol: "INFY.NS", name: "Infosys", price: "1,432.75", change: "+3.21%" },
-  { symbol: "ICICIBANK.NS", name: "ICICI Bank", price: "987.60", change: "+1.12%" },
-  { symbol: "HINDUNILVR.NS", name: "Hindustan Unilever", price: "2,345.80", change: "-1.05%" },
-];
+interface Stock {
+  symbol: string;
+  name: string;
+  exchange: string;
+  sector: string | null;
+}
 
 interface StockSelectorProps {
   onSelectStock: (symbol: string, name: string) => void;
@@ -19,14 +20,39 @@ interface StockSelectorProps {
 
 const StockSelector = ({ onSelectStock }: StockSelectorProps) => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [stocks, setStocks] = useState<Stock[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
 
-  const getChangeColor = (change: string) => {
-    return change.startsWith('+') ? 'text-success' : 'text-danger';
+  useEffect(() => {
+    fetchStocks();
+  }, []);
+
+  const fetchStocks = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('stocks')
+        .select('*')
+        .order('name');
+
+      if (error) throw error;
+      setStocks(data || []);
+    } catch (error: any) {
+      console.error('Error fetching stocks:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load stocks. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const filteredStocks = popularStocks.filter(stock => 
+  const filteredStocks = stocks.filter(stock => 
     stock.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    stock.symbol.toLowerCase().includes(searchTerm.toLowerCase())
+    stock.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (stock.sector && stock.sector.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -37,7 +63,7 @@ const StockSelector = ({ onSelectStock }: StockSelectorProps) => {
             Select a <span className="text-gradient">Stock</span>
           </h2>
           <p className="text-xl text-muted-foreground">
-            Choose from Nifty 50 companies to view predictions
+            Choose from {stocks.length} NSE & BSE listed stocks
           </p>
         </div>
 
@@ -54,41 +80,59 @@ const StockSelector = ({ onSelectStock }: StockSelectorProps) => {
           </div>
         </div>
 
-        {/* Popular Stocks Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredStocks.map((stock) => (
-            <Card 
-              key={stock.symbol} 
-              className="glass-strong border-border hover:border-primary transition-all duration-300 cursor-pointer group"
-              onClick={() => onSelectStock(stock.symbol, stock.name)}
-            >
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <CardTitle className="group-hover:text-primary transition-colors">
-                      {stock.name}
-                    </CardTitle>
-                    <CardDescription className="text-muted-foreground mt-1">
-                      {stock.symbol}
-                    </CardDescription>
+        {/* Stocks Grid */}
+        {isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[...Array(6)].map((_, i) => (
+              <Card key={i} className="glass-strong border-border">
+                <CardHeader>
+                  <Skeleton className="h-6 w-3/4 mb-2" />
+                  <Skeleton className="h-4 w-1/2" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-8 w-full" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : filteredStocks.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground text-lg">No stocks found matching your search.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredStocks.map((stock) => (
+              <Card 
+                key={stock.symbol} 
+                className="glass-strong border-border hover:border-primary transition-all duration-300 cursor-pointer group"
+                onClick={() => onSelectStock(stock.symbol, stock.name)}
+              >
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="group-hover:text-primary transition-colors">
+                        {stock.name}
+                      </CardTitle>
+                      <CardDescription className="text-muted-foreground mt-1">
+                        {stock.symbol} • {stock.exchange}
+                      </CardDescription>
+                    </div>
+                    {stock.sector && (
+                      <Badge variant="outline" className="border-primary/50">
+                        {stock.sector}
+                      </Badge>
+                    )}
                   </div>
-                  <Badge 
-                    variant="outline" 
-                    className={`${getChangeColor(stock.change)} border-current`}
-                  >
-                    {stock.change}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">₹{stock.price}</div>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Click to view predictions
-                </p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    Click to view AI predictions
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

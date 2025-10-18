@@ -83,10 +83,9 @@ Provide your prediction in this exact JSON format:
 
     const prediction = JSON.parse(jsonMatch[0]);
     
-    // Add tomorrow's date
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    prediction.predictionDate = tomorrow.toISOString().split('T')[0];
+    // Calculate next trading day (skip weekends)
+    const nextTradingDay = getNextTradingDay();
+    prediction.predictionDate = nextTradingDay;
 
     return new Response(
       JSON.stringify({ 
@@ -157,6 +156,18 @@ async function fetchRealStockData(symbol: string) {
     // Fallback to mock data if API fails
     return generateMockHistoricalData();
   }
+}
+
+function getNextTradingDay(): string {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  
+  // Skip weekends (Saturday = 6, Sunday = 0)
+  while (date.getDay() === 0 || date.getDay() === 6) {
+    date.setDate(date.getDate() + 1);
+  }
+  
+  return date.toISOString().split('T')[0];
 }
 
 function generateMockHistoricalData() {
