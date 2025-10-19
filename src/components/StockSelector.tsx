@@ -81,16 +81,16 @@ const StockSelector = ({ onSelectStock }: StockSelectorProps) => {
     }
   };
 
-  const dataToUse = liveStocks.length > 0 ? liveStocks : stocks;
+  const dataToUse: LiveStockData[] = liveStocks.length > 0 ? liveStocks : stocks;
 
-  const filteredStocks = dataToUse.filter(stock => 
+  const filteredStocks: LiveStockData[] = dataToUse.filter(stock => 
     stock.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     stock.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (stock.sector && stock.sector.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   // Show top 5 gainers when no search term, otherwise show all filtered results
-  const displayedStocks = searchTerm 
+  const displayedStocks: LiveStockData[] = searchTerm 
     ? filteredStocks 
     : filteredStocks
         .filter(s => s.changePercent !== undefined)
