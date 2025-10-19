@@ -55,15 +55,20 @@ const StockSelector = ({ onSelectStock }: StockSelectorProps) => {
     (stock.sector && stock.sector.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  // Show only 10 featured stocks when no search term, otherwise show all filtered results
+  const displayedStocks = searchTerm ? filteredStocks : filteredStocks.slice(0, 10);
+
   return (
     <section id="dashboard" className="py-20 px-4">
       <div className="container mx-auto">
         <div className="text-center mb-12">
           <h2 className="text-4xl font-bold mb-4">
-            Select a <span className="text-gradient">Stock</span>
+            {searchTerm ? 'Search Results' : 'Featured'} <span className="text-gradient">Stocks</span>
           </h2>
           <p className="text-xl text-muted-foreground">
-            Choose from {stocks.length} NSE & BSE listed stocks
+            {searchTerm 
+              ? `${filteredStocks.length} stocks found` 
+              : `Showing ${displayedStocks.length} featured stocks • ${stocks.length} total stocks available`}
           </p>
         </div>
 
@@ -95,13 +100,13 @@ const StockSelector = ({ onSelectStock }: StockSelectorProps) => {
               </Card>
             ))}
           </div>
-        ) : filteredStocks.length === 0 ? (
+        ) : displayedStocks.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground text-lg">No stocks found matching your search.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredStocks.map((stock) => (
+            {displayedStocks.map((stock) => (
               <Card 
                 key={stock.symbol} 
                 className="glass-strong border-border hover:border-primary transition-all duration-300 cursor-pointer group"
