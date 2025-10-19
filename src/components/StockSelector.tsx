@@ -14,6 +14,12 @@ interface Stock {
   sector: string | null;
 }
 
+interface LiveStockData extends Stock {
+  currentPrice?: number;
+  changePercent?: number;
+  change?: number;
+}
+
 interface StockSelectorProps {
   onSelectStock: (symbol: string, name: string) => void;
 }
@@ -21,15 +27,17 @@ interface StockSelectorProps {
 const StockSelector = ({ onSelectStock }: StockSelectorProps) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [stocks, setStocks] = useState<Stock[]>([]);
+  const [liveStocks, setLiveStocks] = useState<LiveStockData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
   useEffect(() => {
-    fetchStocks();
+    fetchStocksAndPrices();
   }, []);
 
-  const fetchStocks = async () => {
+  const fetchStocksAndPrices = async () => {
     try {
+      // Fetch stocks from database
       const { data, error } = await supabase
         .from('stocks')
         .select('*')
@@ -37,6 +45,30 @@ const StockSelector = ({ onSelectStock }: StockSelectorProps) => {
 
       if (error) throw error;
       setStocks(data || []);
+
+      // Fetch live prices
+      if (data && data.length > 0) {
+        const symbols = data.map(s => s.symbol);
+        const { data: priceData, error: priceError } = await supabase.functions.invoke('fetch-live-prices', {
+          body: { symbols }
+        });
+
+        if (priceError) {
+          console.error('Error fetching live prices:', priceError);
+        } else if (priceData?.success) {
+          // Merge stock data with live prices
+          const stocksWithPrices = data.map(stock => {
+            const priceInfo = priceData.data.find((p: any) => p.symbol === stock.symbol);
+            return {
+              ...stock,
+              currentPrice: priceInfo?.currentPrice,
+              changePercent: priceInfo?.changePercent,
+              change: priceInfo?.change,
+            };
+          });
+          setLiveStocks(stocksWithPrices);
+        }
+      }
     } catch (error: any) {
       console.error('Error fetching stocks:', error);
       toast({
@@ -49,26 +81,33 @@ const StockSelector = ({ onSelectStock }: StockSelectorProps) => {
     }
   };
 
-  const filteredStocks = stocks.filter(stock => 
+  const dataToUse = liveStocks.length > 0 ? liveStocks : stocks;
+
+  const filteredStocks = dataToUse.filter(stock => 
     stock.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     stock.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (stock.sector && stock.sector.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  // Show only 10 featured stocks when no search term, otherwise show all filtered results
-  const displayedStocks = searchTerm ? filteredStocks : filteredStocks.slice(0, 10);
+  // Show top 5 gainers when no search term, otherwise show all filtered results
+  const displayedStocks = searchTerm 
+    ? filteredStocks 
+    : filteredStocks
+        .filter(s => s.changePercent !== undefined)
+        .sort((a, b) => (b.changePercent || 0) - (a.changePercent || 0))
+        .slice(0, 5);
 
   return (
     <section id="dashboard" className="py-20 px-4">
       <div className="container mx-auto">
         <div className="text-center mb-12">
           <h2 className="text-4xl font-bold mb-4">
-            {searchTerm ? 'Search Results' : 'Featured'} <span className="text-gradient">Stocks</span>
+            {searchTerm ? 'Search Results' : 'Top 5'} <span className="text-gradient">Gainers</span>
           </h2>
           <p className="text-xl text-muted-foreground">
             {searchTerm 
               ? `${filteredStocks.length} stocks found` 
-              : `Showing ${displayedStocks.length} featured stocks • ${stocks.length} total stocks available`}
+              : `Live market data • ${stocks.length} total stocks available`}
           </p>
         </div>
 
@@ -114,7 +153,7 @@ const StockSelector = ({ onSelectStock }: StockSelectorProps) => {
               >
                 <CardHeader>
                   <div className="flex justify-between items-start">
-                    <div>
+                    <div className="flex-1">
                       <CardTitle className="group-hover:text-primary transition-colors">
                         {stock.name}
                       </CardTitle>
@@ -122,17 +161,38 @@ const StockSelector = ({ onSelectStock }: StockSelectorProps) => {
                         {stock.symbol} • {stock.exchange}
                       </CardDescription>
                     </div>
-                    {stock.sector && (
-                      <Badge variant="outline" className="border-primary/50">
-                        {stock.sector}
-                      </Badge>
-                    )}
+                    <div className="flex flex-col items-end gap-1">
+                      {stock.changePercent !== undefined && (
+                        <Badge 
+                          variant="outline" 
+                          className={stock.changePercent >= 0 
+                            ? "border-green-500 text-green-600" 
+                            : "border-red-500 text-red-600"
+                          }
+                        >
+                          {stock.changePercent >= 0 ? '↑' : '↓'} {Math.abs(stock.changePercent).toFixed(2)}%
+                        </Badge>
+                      )}
+                      {stock.sector && (
+                        <Badge variant="outline" className="border-primary/50">
+                          {stock.sector}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    Click to view AI predictions
-                  </p>
+                  <div className="space-y-2">
+                    {stock.currentPrice !== undefined && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Current Price:</span>
+                        <span className="font-semibold">₹{stock.currentPrice.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <p className="text-sm text-muted-foreground">
+                      Click to view AI predictions
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
             ))}
