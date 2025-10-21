@@ -117,10 +117,17 @@ Provide your prediction in this exact JSON format:
 async function fetchRealStockData(symbol: string) {
   try {
     // Convert symbol to Yahoo Finance format
-    // Indian NSE stocks need .NS suffix unless they already have it or start with ^
     let yahooSymbol = symbol;
+    
+    // Skip if already has a suffix or is an index
     if (!symbol.includes('.') && !symbol.startsWith('^')) {
-      yahooSymbol = `${symbol}.NS`;
+      // BSE stocks are numerical codes - add .BO suffix
+      if (/^\d+$/.test(symbol)) {
+        yahooSymbol = `${symbol}.BO`;
+      } else {
+        // NSE stocks are alphabetic - add .NS suffix
+        yahooSymbol = `${symbol}.NS`;
+      }
     }
     
     // Calculate date range (last 7 days)
