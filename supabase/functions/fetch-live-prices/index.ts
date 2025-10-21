@@ -17,8 +17,12 @@ serve(async (req) => {
     const priceData = await Promise.all(
       symbols.map(async (symbol: string) => {
         try {
-          // Yahoo Finance uses different suffixes for Indian stocks
-          const yahooSymbol = symbol.includes('.') ? symbol : `${symbol}.NS`;
+          // Convert symbol to Yahoo Finance format
+          // Indian NSE stocks need .NS suffix unless they already have it or start with ^
+          let yahooSymbol = symbol;
+          if (!symbol.includes('.') && !symbol.startsWith('^')) {
+            yahooSymbol = `${symbol}.NS`;
+          }
           
           const response = await fetch(
             `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1d&range=1d`,

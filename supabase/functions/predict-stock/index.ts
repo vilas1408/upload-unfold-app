@@ -116,12 +116,21 @@ Provide your prediction in this exact JSON format:
 
 async function fetchRealStockData(symbol: string) {
   try {
+    // Convert symbol to Yahoo Finance format
+    // Indian NSE stocks need .NS suffix unless they already have it or start with ^
+    let yahooSymbol = symbol;
+    if (!symbol.includes('.') && !symbol.startsWith('^')) {
+      yahooSymbol = `${symbol}.NS`;
+    }
+    
     // Calculate date range (last 7 days)
     const endDate = Math.floor(Date.now() / 1000);
     const startDate = endDate - (7 * 24 * 60 * 60);
     
     // Fetch from Yahoo Finance API
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startDate}&period2=${endDate}&interval=1d`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?period1=${startDate}&period2=${endDate}&interval=1d`;
+    
+    console.log(`Fetching data for ${yahooSymbol} from Yahoo Finance`);
     
     const response = await fetch(url);
     if (!response.ok) {
