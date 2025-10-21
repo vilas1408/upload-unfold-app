@@ -23,9 +23,15 @@ serve(async (req) => {
     const historicalData = await fetchRealStockData(symbol);
     
     // Use Lovable AI to analyze and predict
-    const systemPrompt = `You are an expert stock market analyst with deep knowledge of technical analysis and machine learning. 
-Based on historical price data, predict tomorrow's opening and closing prices for the stock.
-Provide your analysis in a structured format.`;
+    const systemPrompt = `You are an expert Indian stock market analyst with deep knowledge of technical analysis, fundamental analysis, and quantitative methods.
+
+Your predictions must be:
+1. Conservative and realistic - avoid extreme predictions
+2. Based strictly on the provided historical data and technical indicators
+3. Consider market volatility and risk factors
+4. Use proper technical analysis including support/resistance, volume analysis, and trend identification
+
+Provide accurate price predictions with detailed reasoning.`;
 
     const userPrompt = `Analyze this stock: ${companyName} (${symbol})
 
@@ -56,12 +62,12 @@ Provide your prediction in this exact JSON format:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'google/gemini-2.5-pro',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.7,
+        temperature: 0.3,
       }),
     });
 
@@ -137,7 +143,7 @@ async function fetchRealStockData(symbol: string) {
     // Fetch from Yahoo Finance API
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?period1=${startDate}&period2=${endDate}&interval=1d`;
     
-    console.log(`Fetching data for ${yahooSymbol} from Yahoo Finance`);
+    console.log(`Fetching ${symbol} as ${yahooSymbol} (is numeric: ${/^\d+$/.test(symbol)})`);
     
     const response = await fetch(url);
     if (!response.ok) {
@@ -169,6 +175,7 @@ async function fetchRealStockData(symbol: string) {
     return historicalData;
   } catch (error) {
     console.error('Error fetching real stock data:', error);
+    console.warn(`FALLING BACK TO MOCK DATA for ${symbol} - Yahoo Finance API failed`);
     // Fallback to mock data if API fails
     return generateMockHistoricalData();
   }
