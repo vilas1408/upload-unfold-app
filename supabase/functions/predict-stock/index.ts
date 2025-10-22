@@ -267,7 +267,7 @@ async function fetchRealStockData(symbol: string) {
     console.error('Error fetching real stock data:', error);
     console.warn(`FALLING BACK TO MOCK DATA for ${symbol} - Yahoo Finance API failed`);
     // Fallback to mock data if API fails
-    return generateMockHistoricalData();
+    return generateMockHistoricalData(symbol);
   }
 }
 
@@ -283,26 +283,49 @@ function getNextTradingDay(): string {
   return date.toISOString().split('T')[0];
 }
 
-function generateMockHistoricalData() {
+// Seeded random number generator for deterministic mock data
+function seededRandom(seed: number) {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+}
+
+function generateMockHistoricalData(symbol: string) {
   const data = [];
   const basePrice = 2400;
   const today = new Date();
+  
+  // Create a seed from the symbol and today's date for consistency
+  const symbolSeed = symbol.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const dateSeed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+  let seed = symbolSeed + dateSeed;
   
   for (let i = 29; i >= 0; i--) {
     const date = new Date(today);
     date.setDate(date.getDate() - i);
     
-    const randomChange = (Math.random() - 0.5) * 50;
+    // Use seeded random for consistent results
+    seed++;
+    const randomChange = (seededRandom(seed) - 0.5) * 50;
     const open = basePrice + randomChange + (29 - i) * 10;
-    const close = open + (Math.random() - 0.5) * 30;
-    const volume = Math.floor(1000000 + Math.random() * 500000);
+    
+    seed++;
+    const close = open + (seededRandom(seed) - 0.5) * 30;
+    
+    seed++;
+    const volume = Math.floor(1000000 + seededRandom(seed) * 500000);
+    
+    seed++;
+    const high = Math.max(open, close) + seededRandom(seed) * 20;
+    
+    seed++;
+    const low = Math.min(open, close) - seededRandom(seed) * 20;
     
     data.push({
       date: date.toISOString().split('T')[0],
       open: Math.round(open * 100) / 100,
       close: Math.round(close * 100) / 100,
-      high: Math.round((Math.max(open, close) + Math.random() * 20) * 100) / 100,
-      low: Math.round((Math.min(open, close) - Math.random() * 20) * 100) / 100,
+      high: Math.round(high * 100) / 100,
+      low: Math.round(low * 100) / 100,
       volume
     });
   }
