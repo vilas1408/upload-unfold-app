@@ -38,11 +38,33 @@ Your analytical framework MUST include:
 
 Critical Requirements:
 - Base predictions STRICTLY on provided data and technical indicators
-- Provide conservative, realistic predictions (avoid extreme movements without strong justification)
-- Calculate confidence based on indicator alignment and data quality
-- Consider multiple scenarios (bullish, bearish, neutral)
-- Account for mean reversion and momentum persistence
-- Weight recent data more heavily while respecting longer-term trends`;
+- Provide realistic predictions with actionable confidence levels
+- Calculate confidence based on indicator confluence and signal strength
+- Weight recent data appropriately while respecting longer-term trends
+
+CONFIDENCE SCORING FRAMEWORK:
+Calculate confidence (65-90%) based on indicator alignment:
+
+**HIGH Confidence (80-90%)**: 
+- 4+ indicators aligned in same direction
+- Strong volume confirmation
+- Clear trend across all timeframes
+- RSI and MACD both confirming
+- Price respecting support/resistance levels
+
+**MEDIUM Confidence (70-79%)**:
+- 3 indicators aligned
+- Moderate volume support
+- Trend alignment on 2 timeframes
+- At least one momentum indicator confirming
+
+**BASELINE Confidence (65-69%)**:
+- 2 indicators aligned
+- Mixed signals on volume
+- Conflicting timeframe trends
+- Neutral momentum indicators
+
+IMPORTANT: Higher confidence when indicators CONVERGE. Lower confidence when indicators DIVERGE. Give credit for signal alignment.`;
 
     const userPrompt = `Conduct comprehensive technical analysis for: ${companyName} (${symbol})
 
@@ -93,19 +115,33 @@ Trend Analysis:
 === PREDICTION TASK ===
 Based on the comprehensive technical analysis above, predict tomorrow's opening and closing prices.
 
-Your analysis MUST consider:
-1. **Indicator Confluence**: How many indicators point in the same direction?
-2. **Trend Strength**: Are trends aligned across timeframes?
-3. **Volume Confirmation**: Does volume support the price movement?
-4. **Risk Factors**: What could invalidate this prediction?
-5. **Probability**: What's the statistical likelihood based on similar historical patterns?
+ANALYSIS CHECKLIST (Score each YES/NO):
+□ Are 3+ indicators aligned in the same direction? (+Strong)
+□ Is volume confirming the price direction? (+Strong)
+□ Are short & medium-term trends aligned? (+Moderate)
+□ Is RSI in confirming zone (not overbought/oversold against trend)? (+Moderate)
+□ Is MACD histogram supporting the trend? (+Moderate)
+□ Is price respecting key support/resistance? (+Moderate)
+
+**Confidence Calculation:**
+- Count YES answers above
+- 5-6 YES = 80-90% confidence
+- 3-4 YES = 70-79% confidence  
+- 1-2 YES = 65-69% confidence
+
+Your prediction MUST:
+1. Identify PRIMARY signal (strongest indicator)
+2. List SUPPORTING signals (confirming indicators)
+3. Note CONFLICTING signals (opposing indicators)
+4. Calculate confidence based on signal alignment
+5. Justify confidence with indicator count
 
 Provide your prediction in this EXACT JSON format:
 {
   "openingPrice": <number>,
   "closingPrice": <number>,
-  "reason": "<comprehensive 150+ word analysis covering: (1) primary technical signals, (2) trend alignment, (3) volume analysis, (4) risk factors, (5) confidence rationale>",
-  "confidence": "<percentage between 50-95%>",
+  "reason": "<comprehensive 150+ word analysis covering: (1) primary technical signals with strength rating, (2) trend alignment across timeframes, (3) volume confirmation status, (4) risk factors, (5) confidence rationale with indicator count (X out of 6 indicators aligned)>",
+  "confidence": "<percentage between 65-90%>",
   "predictionDate": "<YYYY-MM-DD>"
 }`;
 
