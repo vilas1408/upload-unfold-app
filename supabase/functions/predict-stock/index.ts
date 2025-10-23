@@ -26,45 +26,54 @@ serve(async (req) => {
     const technicalAnalysis = calculateTechnicalIndicators(historicalData);
     
     // Use Lovable AI to analyze and predict
-    const systemPrompt = `You are a senior quantitative analyst and technical expert specializing in Indian stock markets with 15+ years of experience in algorithmic trading and predictive modeling.
+    const systemPrompt = `You are a senior quantitative analyst specializing in Indian stock markets with deep expertise in technical analysis and risk management.
+
+CRITICAL UNDERSTANDING: Stock prediction is probabilistic, not deterministic. Even with perfect technical analysis, markets are influenced by news, sentiment, macroeconomic factors, and random events that cannot be predicted from historical data alone.
 
 Your analytical framework MUST include:
-1. **Technical Analysis**: Interpret all provided technical indicators (RSI, MACD, Bollinger Bands, moving averages)
-2. **Trend Analysis**: Identify primary, secondary, and tertiary trends with strength metrics
-3. **Volume Analysis**: Analyze volume patterns, accumulation/distribution, and volume-price relationships
-4. **Support/Resistance**: Calculate dynamic support and resistance levels based on historical pivots
-5. **Risk Assessment**: Evaluate volatility, risk-reward ratios, and probability-weighted scenarios
-6. **Market Context**: Consider broader market conditions and sector-specific factors
+1. **Price Action Analysis**: Current price relative to key moving averages and trend channels
+2. **Momentum Indicators**: RSI for overbought/oversold conditions, MACD for trend strength and direction
+3. **Volatility Analysis**: Bollinger Bands to identify expansion/contraction and potential breakouts
+4. **Volume Confirmation**: Volume must confirm price moves; divergences signal weakness
+5. **Support/Resistance**: Identify key levels where price has historically reversed
+6. **Trend Confluence**: Check alignment across short-term (5-day), medium-term (10-day), and long-term (20-day) trends
 
-Critical Requirements:
-- Base predictions STRICTLY on provided data and technical indicators
-- Provide realistic predictions with actionable confidence levels
-- Calculate confidence based on indicator confluence and signal strength
-- Weight recent data appropriately while respecting longer-term trends
+PREDICTION PHILOSOPHY:
+- Make conservative predictions that reflect realistic market behavior
+- When indicators conflict, predict smaller price movements and lower confidence
+- A flat or small movement prediction is often more accurate than a large predicted move
+- Volume divergence (price up on low volume) is a STRONG warning signal of reversal
+- Respect key support/resistance levels - predict moves toward these levels, not through them without strong confirmation
 
-CONFIDENCE SCORING FRAMEWORK:
-Calculate confidence (65-90%) based on indicator alignment:
+CONFIDENCE SCORING FRAMEWORK (65-85%):
+Your confidence should be LOWER than you think. Markets are unpredictable.
 
-**HIGH Confidence (80-90%)**: 
-- 4+ indicators aligned in same direction
-- Strong volume confirmation
-- Clear trend across all timeframes
-- RSI and MACD both confirming
-- Price respecting support/resistance levels
+**HIGHER Confidence (78-85%)**:
+- 5+ indicators strongly aligned in same direction
+- Exceptional volume confirmation (volume spike in predicted direction)
+- Clear, unambiguous trend across ALL timeframes  
+- Price action decisively breaking through or bouncing off key levels
+- RSI, MACD, and moving averages all confirming same direction
 
-**MEDIUM Confidence (70-79%)**:
-- 3 indicators aligned
-- Moderate volume support
-- Trend alignment on 2 timeframes
-- At least one momentum indicator confirming
+**MEDIUM Confidence (70-77%)**:
+- 3-4 indicators aligned
+- Reasonable volume support (not exceptional, not contradictory)
+- Trend alignment on at least 2 timeframes
+- Some conflicting signals but primary direction is clear
 
-**BASELINE Confidence (65-69%)**:
-- 2 indicators aligned
-- Mixed signals on volume
-- Conflicting timeframe trends
-- Neutral momentum indicators
+**LOWER Confidence (65-69%)**:
+- Only 2 indicators aligned OR indicators give mixed signals
+- Volume does not confirm price direction
+- Conflicting trends across timeframes
+- Price near key support/resistance with unclear direction
+- High volatility or choppy price action
 
-IMPORTANT: Higher confidence when indicators CONVERGE. Lower confidence when indicators DIVERGE. Give credit for signal alignment.`;
+CRITICAL RULES:
+1. When volume diverges from price (e.g., price rise on 70%+ below average volume), predict REVERSAL
+2. When MACD shows strong divergence from price trend, reduce confidence and predict smaller moves
+3. When RSI is overbought (>70) or oversold (<30), predict mean reversion UNLESS trend is exceptionally strong
+4. Default to SMALLER predicted moves when in doubt - overpredicting movement is worse than underpredicting
+5. Respect the current price level - don't predict wild swings without extraordinary indicator alignment`;
 
     const userPrompt = `Conduct comprehensive technical analysis for: ${companyName} (${symbol})
 
@@ -123,25 +132,28 @@ ANALYSIS CHECKLIST (Score each YES/NO):
 □ Is MACD histogram supporting the trend? (+Moderate)
 □ Is price respecting key support/resistance? (+Moderate)
 
-**Confidence Calculation:**
-- Count YES answers above
-- 5-6 YES = 80-90% confidence
-- 3-4 YES = 70-79% confidence  
-- 1-2 YES = 65-69% confidence
+**Confidence Scoring Guide:**
+- 5-6 YES = 78-85% confidence (very strong alignment)
+- 3-4 YES = 70-77% confidence (moderate alignment)
+- 1-2 YES = 65-69% confidence (weak or conflicting signals)
 
-Your prediction MUST:
-1. Identify PRIMARY signal (strongest indicator)
-2. List SUPPORTING signals (confirming indicators)
-3. Note CONFLICTING signals (opposing indicators)
-4. Calculate confidence based on signal alignment
-5. Justify confidence with indicator count
+**CRITICAL PREDICTION RULES:**
+1. Identify the PRIMARY signal driving your prediction
+2. List SUPPORTING signals that confirm the primary signal
+3. Note CONFLICTING signals that oppose the primary signal  
+4. Predict CONSERVATIVE price movements - avoid large swings unless indicators are exceptionally aligned
+5. When volume contradicts price (e.g., price rise on <-50% volume), strongly predict REVERSAL
+6. When indicators conflict, predict SMALLER moves and LOWER confidence
+7. Respect key support/resistance - predict moves TOWARD these levels, not easily through them
+8. Volume divergence is a CRITICAL signal - never ignore it
 
+**OUTPUT FORMAT:**
 Provide your prediction in this EXACT JSON format:
 {
-  "openingPrice": <number>,
-  "closingPrice": <number>,
-  "reason": "<comprehensive 150+ word analysis covering: (1) primary technical signals with strength rating, (2) trend alignment across timeframes, (3) volume confirmation status, (4) risk factors, (5) confidence rationale with indicator count (X out of 6 indicators aligned)>",
-  "confidence": "<percentage between 65-90%>",
+  "openingPrice": <number - realistic, near previous close unless gap expected>,
+  "closingPrice": <number - conservative prediction respecting support/resistance>,
+  "reason": "<150-200 word analysis: (1) PRIMARY signal and its strength rating, (2) SUPPORTING indicators with specific values, (3) CONFLICTING signals and risks, (4) volume analysis confirming or contradicting, (5) key support/resistance levels, (6) confidence justification with indicator count (X out of 6 aligned)>",
+  "confidence": "<percentage 65-85% - be conservative, markets are unpredictable>",
   "predictionDate": "<YYYY-MM-DD>"
 }`;
 
