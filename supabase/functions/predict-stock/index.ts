@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -27,6 +28,43 @@ serve(async (req) => {
     }
     
     console.log('Predicting stock for:', symbol, companyName);
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Check for cached prediction for today
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    const { data: cachedPrediction, error: cacheError } = await supabase
+      .from('stock_predictions')
+      .select('*')
+      .eq('symbol', symbol)
+      .eq('prediction_date', today)
+      .single();
+
+    if (cachedPrediction && !cacheError) {
+      console.log('Returning cached prediction for:', symbol);
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          prediction: {
+            openingPrice: cachedPrediction.opening_price,
+            closingPrice: cachedPrediction.closing_price,
+            reason: cachedPrediction.reason,
+            confidence: cachedPrediction.confidence,
+            predictionDate: cachedPrediction.prediction_date
+          },
+          historicalData: cachedPrediction.historical_data,
+          cached: true
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    console.log('No cache found, generating new prediction');
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
@@ -223,11 +261,32 @@ Provide your prediction in this EXACT JSON format:
     const nextTradingDay = getNextTradingDay();
     prediction.predictionDate = nextTradingDay;
 
+    // Cache the prediction in the database
+    try {
+      await supabase
+        .from('stock_predictions')
+        .insert({
+          symbol,
+          company_name: companyName,
+          prediction_date: today,
+          opening_price: prediction.openingPrice,
+          closing_price: prediction.closingPrice,
+          reason: prediction.reason,
+          confidence: prediction.confidence,
+          historical_data: historicalData
+        });
+      console.log('Prediction cached successfully');
+    } catch (cacheInsertError) {
+      console.error('Failed to cache prediction:', cacheInsertError);
+      // Don't fail the request if caching fails
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 
         prediction,
-        historicalData 
+        historicalData,
+        cached: false
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

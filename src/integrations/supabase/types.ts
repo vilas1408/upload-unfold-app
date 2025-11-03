@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      stock_predictions: {
+        Row: {
+          closing_price: number
+          company_name: string
+          confidence: string
+          created_at: string
+          historical_data: Json
+          id: string
+          opening_price: number
+          prediction_date: string
+          reason: string
+          symbol: string
+        }
+        Insert: {
+          closing_price: number
+          company_name: string
+          confidence: string
+          created_at?: string
+          historical_data: Json
+          id?: string
+          opening_price: number
+          prediction_date: string
+          reason: string
+          symbol: string
+        }
+        Update: {
+          closing_price?: number
+          company_name?: string
+          confidence?: string
+          created_at?: string
+          historical_data?: Json
+          id?: string
+          opening_price?: number
+          prediction_date?: string
+          reason?: string
+          symbol?: string
+        }
+        Relationships: []
+      }
       stocks: {
         Row: {
           created_at: string
