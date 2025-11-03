@@ -11,7 +11,21 @@ serve(async (req) => {
   }
 
   try {
-    const { symbol, companyName } = await req.json();
+    let body;
+    try {
+      body = await req.json();
+    } catch (jsonError) {
+      console.error('Failed to parse request body:', jsonError);
+      throw new Error('Invalid request body. Please provide symbol and companyName.');
+    }
+
+    const { symbol, companyName } = body;
+    
+    if (!symbol || !companyName) {
+      console.error('Missing required fields:', { symbol, companyName });
+      throw new Error('Both symbol and companyName are required');
+    }
+    
     console.log('Predicting stock for:', symbol, companyName);
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
@@ -176,10 +190,24 @@ Provide your prediction in this EXACT JSON format:
     if (!response.ok) {
       const errorText = await response.text();
       console.error('AI gateway error:', response.status, errorText);
-      throw new Error(`AI gateway error: ${response.status}`);
+      throw new Error(`AI gateway error: ${response.status} - ${errorText}`);
     }
 
-    const aiResponse = await response.json();
+    let aiResponse;
+    try {
+      const responseText = await response.text();
+      console.log('Raw AI Response:', responseText.substring(0, 500)); // Log first 500 chars
+      aiResponse = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse AI response:', parseError);
+      throw new Error('Invalid response from AI gateway. Please try again.');
+    }
+
+    if (!aiResponse.choices?.[0]?.message?.content) {
+      console.error('Unexpected AI response structure:', aiResponse);
+      throw new Error('Invalid AI response structure');
+    }
+
     const content = aiResponse.choices[0].message.content;
     console.log('AI Response:', content);
 
