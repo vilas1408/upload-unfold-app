@@ -50,10 +50,12 @@ const Hero = () => {
               className="text-lg px-8 py-6 border-primary text-primary hover:bg-primary hover:text-primary-foreground"
               onClick={() => {
                 const predictionsSection = document.getElementById('predictions');
-                predictionsSection?.scrollIntoView({ behavior: 'smooth' });
+                if (predictionsSection) {
+                  predictionsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
               }}
             >
-              View Demo
+              View Example
               <BarChart3 className="ml-2 h-5 w-5" />
             </Button>
           </div>

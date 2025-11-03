@@ -25,10 +25,13 @@ const PredictionChart = () => {
       <div className="container mx-auto">
         <div className="text-center mb-12">
           <h2 className="text-4xl font-bold mb-4">
-            AI-Powered <span className="text-gradient">Predictions</span>
+            <span className="text-gradient">Example</span> Prediction Visualization
           </h2>
           <p className="text-xl text-muted-foreground">
-            Advanced machine learning models forecasting future prices
+            This is a sample visualization showing how AI predictions are displayed
+          </p>
+          <p className="text-sm text-muted-foreground mt-2 bg-muted/30 inline-block px-4 py-2 rounded-lg">
+            📊 For real AI predictions, select any stock from the section above
           </p>
         </div>
 
@@ -36,8 +39,8 @@ const PredictionChart = () => {
           {/* Historical vs Predicted */}
           <Card className="glass-strong border-border">
             <CardHeader>
-              <CardTitle>Historical Performance</CardTitle>
-              <CardDescription>Actual vs Predicted Prices (Last 7 Weeks)</CardDescription>
+              <CardTitle>Historical Performance (Example)</CardTitle>
+              <CardDescription>Sample: How actual vs predicted prices are compared</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
@@ -92,8 +95,8 @@ const PredictionChart = () => {
           {/* Future Predictions */}
           <Card className="glass-strong border-border">
             <CardHeader>
-              <CardTitle>Future Forecast</CardTitle>
-              <CardDescription>AI Predictions for Next 5 Weeks</CardDescription>
+              <CardTitle>Future Forecast (Example)</CardTitle>
+              <CardDescription>Sample: How AI forecasts future prices</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
