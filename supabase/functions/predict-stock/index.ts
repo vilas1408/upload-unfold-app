@@ -34,28 +34,34 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Check for cached prediction for today
+    // Check for cached 7-day predictions for today
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-    const { data: cachedPrediction, error: cacheError } = await supabase
+    const { data: cachedPredictions, error: cacheError } = await supabase
       .from('stock_predictions')
       .select('*')
       .eq('symbol', symbol)
       .eq('prediction_date', today)
-      .single();
+      .order('days_ahead');
 
-    if (cachedPrediction && !cacheError) {
-      console.log('Returning cached prediction for:', symbol);
+    if (cachedPredictions && cachedPredictions.length === 7 && !cacheError) {
+      console.log('Returning cached 7-day predictions for:', symbol);
+      const predictions = cachedPredictions.map(p => ({
+        day: p.days_ahead,
+        openingPrice: p.opening_price,
+        closingPrice: p.closing_price,
+        reason: p.reason,
+        confidence: p.confidence,
+        predictionDate: p.prediction_date,
+        technicalScore: p.technical_score,
+        trendAlignment: p.trend_alignment,
+        riskFactors: p.risk_factors
+      }));
+      
       return new Response(
         JSON.stringify({ 
           success: true, 
-          prediction: {
-            openingPrice: cachedPrediction.opening_price,
-            closingPrice: cachedPrediction.closing_price,
-            reason: cachedPrediction.reason,
-            confidence: cachedPrediction.confidence,
-            predictionDate: cachedPrediction.prediction_date
-          },
-          historicalData: cachedPrediction.historical_data,
+          predictions,
+          historicalData: cachedPredictions[0].historical_data,
           cached: true
         }),
         { 
@@ -77,57 +83,60 @@ serve(async (req) => {
     // Calculate technical indicators
     const technicalAnalysis = calculateTechnicalIndicators(historicalData);
     
-    // Use Lovable AI to analyze and predict
-    const systemPrompt = `You are a senior quantitative analyst specializing in Indian stock markets with deep expertise in technical analysis and risk management.
+    // Use Lovable AI to analyze and predict 7 days
+    const systemPrompt = `You are a senior quantitative analyst specializing in Indian stock markets with deep expertise in technical analysis, risk management, and multi-day forecasting.
 
-CRITICAL UNDERSTANDING: Stock prediction is probabilistic, not deterministic. Even with perfect technical analysis, markets are influenced by news, sentiment, macroeconomic factors, and random events that cannot be predicted from historical data alone.
+CRITICAL UNDERSTANDING: Stock prediction is probabilistic. Markets are influenced by news, sentiment, macro factors, and random events. Confidence DECREASES with prediction horizon.
 
-Your analytical framework MUST include:
-1. **Price Action Analysis**: Current price relative to key moving averages and trend channels
-2. **Momentum Indicators**: RSI for overbought/oversold conditions, MACD for trend strength and direction
-3. **Volatility Analysis**: Bollinger Bands to identify expansion/contraction and potential breakouts
-4. **Volume Confirmation**: Volume must confirm price moves; divergences signal weakness
-5. **Support/Resistance**: Identify key levels where price has historically reversed
-6. **Trend Confluence**: Check alignment across short-term (5-day), medium-term (10-day), and long-term (20-day) trends
+MULTI-DAY PREDICTION FRAMEWORK:
+1. **Day 1-2**: Highest confidence (68-85%) - technical indicators most reliable
+2. **Day 3-4**: Moderate confidence (65-78%) - trend continuation analysis
+3. **Day 5-7**: Lower confidence (62-72%) - macro trend projections with increased uncertainty
 
-PREDICTION PHILOSOPHY:
-- Make conservative predictions that reflect realistic market behavior
-- When indicators conflict, predict smaller price movements and lower confidence
-- A flat or small movement prediction is often more accurate than a large predicted move
-- Volume divergence (price up on low volume) is a STRONG warning signal of reversal
-- Respect key support/resistance levels - predict moves toward these levels, not through them without strong confirmation
+ANALYTICAL FRAMEWORK:
+1. **Price Action Analysis**: Current price vs key moving averages and trend channels
+2. **Momentum Indicators**: RSI overbought/oversold, MACD trend strength
+3. **Volatility Analysis**: Bollinger Bands for breakouts/contractions
+4. **Volume Confirmation**: Volume must confirm moves; divergences = weakness
+5. **Support/Resistance**: Key price levels for reversals
+6. **Trend Confluence**: Alignment across 5-day, 10-day, 20-day trends
 
-CONFIDENCE SCORING FRAMEWORK (65-85%):
-Your confidence should be LOWER than you think. Markets are unpredictable.
+ENHANCED CONFIDENCE SCORING (60-85%):
+Score 6 key indicators (YES/NO for each):
+□ 3+ indicators aligned in same direction? 
+□ Volume confirming price direction?
+□ Short & medium-term trends aligned?
+□ RSI in confirming zone (not overbought/oversold)?
+□ MACD histogram supporting trend?
+□ Price respecting support/resistance?
 
-**HIGHER Confidence (78-85%)**:
-- 5+ indicators strongly aligned in same direction
-- Exceptional volume confirmation (volume spike in predicted direction)
-- Clear, unambiguous trend across ALL timeframes  
-- Price action decisively breaking through or bouncing off key levels
-- RSI, MACD, and moving averages all confirming same direction
+**Technical Score**: Count of aligned indicators (0-6)
 
-**MEDIUM Confidence (70-77%)**:
-- 3-4 indicators aligned
-- Reasonable volume support (not exceptional, not contradictory)
-- Trend alignment on at least 2 timeframes
-- Some conflicting signals but primary direction is clear
+**Confidence Calculation**:
+Day 1-2: Base = 68% + (Technical Score × 3%)
+Day 3-4: Base = 65% + (Technical Score × 2.5%)
+Day 5-7: Base = 62% + (Technical Score × 2%)
 
-**LOWER Confidence (65-69%)**:
-- Only 2 indicators aligned OR indicators give mixed signals
-- Volume does not confirm price direction
-- Conflicting trends across timeframes
-- Price near key support/resistance with unclear direction
-- High volatility or choppy price action
+Maximum confidence caps:
+- Day 1-2: 85%
+- Day 3-4: 78%  
+- Day 5-7: 72%
 
-CRITICAL RULES:
-1. When volume diverges from price (e.g., price rise on 70%+ below average volume), predict REVERSAL
-2. When MACD shows strong divergence from price trend, reduce confidence and predict smaller moves
-3. When RSI is overbought (>70) or oversold (<30), predict mean reversion UNLESS trend is exceptionally strong
-4. Default to SMALLER predicted moves when in doubt - overpredicting movement is worse than underpredicting
-5. Respect the current price level - don't predict wild swings without extraordinary indicator alignment`;
+**Risk Factors** (Lower confidence when present):
+- Conflicting indicator signals (-5%)
+- Volume divergence from price (-5%)
+- High volatility/choppy action (-5%)
+- Near major resistance without clear breakout momentum (-5%)
 
-    const userPrompt = `Conduct comprehensive technical analysis for: ${companyName} (${symbol})
+PREDICTION RULES:
+1. Day 1 uses previous close as opening price baseline
+2. Each day's opening = previous day's predicted closing (with gap analysis)
+3. Predict conservative movements - avoid wild swings
+4. Volume divergence = predict REVERSAL
+5. Respect support/resistance levels
+6. Increase uncertainty buffer for days 5-7`;
+
+    const userPrompt = `Predict stock prices for the NEXT 7 TRADING DAYS for: ${companyName} (${symbol})
 
 === PRICE DATA (Last 30 Days) ===
 ${historicalData.map((d: any) => 
@@ -143,71 +152,52 @@ Moving Averages:
 - SMA(20): ₹${technicalAnalysis.sma20}
 - EMA(10): ₹${technicalAnalysis.ema10}
 
-Momentum Indicators:
+Momentum:
 - RSI(14): ${technicalAnalysis.rsi} ${technicalAnalysis.rsi > 70 ? '(Overbought)' : technicalAnalysis.rsi < 30 ? '(Oversold)' : '(Neutral)'}
-- MACD: ${technicalAnalysis.macd.macd}
-- MACD Signal: ${technicalAnalysis.macd.signal}
-- MACD Histogram: ${technicalAnalysis.macd.histogram} ${technicalAnalysis.macd.histogram > 0 ? '(Bullish)' : '(Bearish)'}
+- MACD: ${technicalAnalysis.macd.macd}, Signal: ${technicalAnalysis.macd.signal}, Histogram: ${technicalAnalysis.macd.histogram}
 
 Volatility:
-- Bollinger Bands:
-  * Upper: ₹${technicalAnalysis.bollingerBands.upper}
-  * Middle: ₹${technicalAnalysis.bollingerBands.middle}
-  * Lower: ₹${technicalAnalysis.bollingerBands.lower}
-  * Width: ${technicalAnalysis.bollingerBands.width}% ${technicalAnalysis.bollingerBands.width < 2 ? '(Low volatility)' : technicalAnalysis.bollingerBands.width > 4 ? '(High volatility)' : '(Normal volatility)'}
-- Standard Deviation: ${technicalAnalysis.volatility}%
+- Bollinger Upper: ₹${technicalAnalysis.bollingerBands.upper}
+- Bollinger Lower: ₹${technicalAnalysis.bollingerBands.lower}
+- Width: ${technicalAnalysis.bollingerBands.width}%
 
-Price Levels:
-- Support Levels: ${technicalAnalysis.supportLevels.map(s => `₹${s}`).join(', ')}
-- Resistance Levels: ${technicalAnalysis.resistanceLevels.map(r => `₹${r}`).join(', ')}
+Support: ${technicalAnalysis.supportLevels.map((s: any) => `₹${s}`).join(', ')}
+Resistance: ${technicalAnalysis.resistanceLevels.map((r: any) => `₹${r}`).join(', ')}
 
-Volume Analysis:
-- Average Volume (20-day): ${technicalAnalysis.avgVolume.toLocaleString()}
-- Recent Volume Trend: ${technicalAnalysis.volumeTrend}
-- Volume vs Average: ${technicalAnalysis.volumeVsAvg}%
+Volume: Avg ${technicalAnalysis.avgVolume.toLocaleString()}, Trend: ${technicalAnalysis.volumeTrend}, vs Avg: ${technicalAnalysis.volumeVsAvg}%
 
-Trend Analysis:
-- Short-term Trend (5-day): ${technicalAnalysis.shortTrend}
-- Medium-term Trend (10-day): ${technicalAnalysis.mediumTrend}
-- Long-term Trend (20-day): ${technicalAnalysis.longTrend}
-- Price Change (24h): ${technicalAnalysis.priceChange24h}%
-- Price Change (7d): ${technicalAnalysis.priceChange7d}%
+Trends: Short ${technicalAnalysis.shortTrend}, Medium ${technicalAnalysis.mediumTrend}, Long ${technicalAnalysis.longTrend}
 
-=== PREDICTION TASK ===
-Based on the comprehensive technical analysis above, predict tomorrow's opening and closing prices.
+=== TASK: PREDICT NEXT 7 DAYS ===
+For EACH day (Day 1 through Day 7):
 
-ANALYSIS CHECKLIST (Score each YES/NO):
-□ Are 3+ indicators aligned in the same direction? (+Strong)
-□ Is volume confirming the price direction? (+Strong)
-□ Are short & medium-term trends aligned? (+Moderate)
-□ Is RSI in confirming zone (not overbought/oversold against trend)? (+Moderate)
-□ Is MACD histogram supporting the trend? (+Moderate)
-□ Is price respecting key support/resistance? (+Moderate)
+1. Calculate Technical Score (0-6 based on indicator alignment)
+2. Determine confidence using formula (decreasing with days ahead)
+3. List risk factors that lower confidence
+4. Predict opening and closing prices
+5. Provide concise reasoning (100-150 words per day)
 
-**Confidence Scoring Guide:**
-- 5-6 YES = 78-85% confidence (very strong alignment)
-- 3-4 YES = 70-77% confidence (moderate alignment)
-- 1-2 YES = 65-69% confidence (weak or conflicting signals)
+**OUTPUT FORMAT** (JSON array with 7 predictions):
+[
+  {
+    "day": 1,
+    "openingPrice": <number>,
+    "closingPrice": <number>,
+    "reason": "<100-150 word analysis: PRIMARY signal, supporting indicators, conflicts, volume, support/resistance>",
+    "confidence": "<percentage with calculation shown>",
+    "predictionDate": "<YYYY-MM-DD>",
+    "technicalScore": <0-6>,
+    "trendAlignment": "<bullish/bearish/neutral>",
+    "riskFactors": "<comma-separated list of risk factors>"
+  },
+  ... (repeat for days 2-7)
+]
 
-**CRITICAL PREDICTION RULES:**
-1. Identify the PRIMARY signal driving your prediction
-2. List SUPPORTING signals that confirm the primary signal
-3. Note CONFLICTING signals that oppose the primary signal  
-4. Predict CONSERVATIVE price movements - avoid large swings unless indicators are exceptionally aligned
-5. When volume contradicts price (e.g., price rise on <-50% volume), strongly predict REVERSAL
-6. When indicators conflict, predict SMALLER moves and LOWER confidence
-7. Respect key support/resistance - predict moves TOWARD these levels, not easily through them
-8. Volume divergence is a CRITICAL signal - never ignore it
-
-**OUTPUT FORMAT:**
-Provide your prediction in this EXACT JSON format:
-{
-  "openingPrice": <number - realistic, near previous close unless gap expected>,
-  "closingPrice": <number - conservative prediction respecting support/resistance>,
-  "reason": "<150-200 word analysis: (1) PRIMARY signal and its strength rating, (2) SUPPORTING indicators with specific values, (3) CONFLICTING signals and risks, (4) volume analysis confirming or contradicting, (5) key support/resistance levels, (6) confidence justification with indicator count (X out of 6 aligned)>",
-  "confidence": "<percentage 65-85% - be conservative, markets are unpredictable>",
-  "predictionDate": "<YYYY-MM-DD>"
-}`;
+CRITICAL: 
+- Day 1 opening ≈ last close (${technicalAnalysis.currentPrice})
+- Each day's opening = previous day's predicted close (unless gap expected)
+- Confidence MUST decrease for later days
+- Be CONSERVATIVE with price movements`;
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -249,42 +239,57 @@ Provide your prediction in this EXACT JSON format:
     const content = aiResponse.choices[0].message.content;
     console.log('AI Response:', content);
 
-    // Extract JSON from response
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    // Extract JSON array from response
+    const jsonMatch = content.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
-      throw new Error('Could not parse AI response');
+      throw new Error('Could not parse AI response - expected array of 7 predictions');
     }
 
-    const prediction = JSON.parse(jsonMatch[0]);
+    const predictions = JSON.parse(jsonMatch[0]);
     
-    // Calculate next trading day (skip weekends)
-    const nextTradingDay = getNextTradingDay();
-    prediction.predictionDate = nextTradingDay;
+    if (!Array.isArray(predictions) || predictions.length !== 7) {
+      throw new Error(`Expected 7 predictions, got ${predictions?.length || 0}`);
+    }
 
-    // Cache the prediction in the database
+    // Calculate prediction dates for next 7 trading days
+    const tradingDates = getNext7TradingDays();
+    predictions.forEach((pred, idx) => {
+      pred.predictionDate = tradingDates[idx];
+      pred.day = idx + 1;
+    });
+
+    // Cache all 7 predictions in the database
     try {
-      await supabase
-        .from('stock_predictions')
-        .insert({
-          symbol,
-          company_name: companyName,
-          prediction_date: today,
-          opening_price: prediction.openingPrice,
-          closing_price: prediction.closingPrice,
-          reason: prediction.reason,
-          confidence: prediction.confidence,
-          historical_data: historicalData
-        });
-      console.log('Prediction cached successfully');
+      const insertPromises = predictions.map((pred, idx) => 
+        supabase
+          .from('stock_predictions')
+          .insert({
+            symbol,
+            company_name: companyName,
+            prediction_date: today,
+            days_ahead: idx + 1,
+            opening_price: pred.openingPrice,
+            closing_price: pred.closingPrice,
+            reason: pred.reason,
+            confidence: pred.confidence,
+            technical_score: pred.technicalScore,
+            trend_alignment: pred.trendAlignment,
+            risk_factors: pred.riskFactors,
+            historical_data: historicalData
+          })
+      );
+      
+      await Promise.all(insertPromises);
+      console.log('All 7 predictions cached successfully');
     } catch (cacheInsertError) {
-      console.error('Failed to cache prediction:', cacheInsertError);
+      console.error('Failed to cache predictions:', cacheInsertError);
       // Don't fail the request if caching fails
     }
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        prediction,
+        predictions,
         historicalData,
         cached: false
       }),
@@ -370,16 +375,22 @@ async function fetchRealStockData(symbol: string) {
   }
 }
 
-function getNextTradingDay(): string {
+function getNext7TradingDays(): string[] {
+  const dates: string[] = [];
   const date = new Date();
-  date.setDate(date.getDate() + 1);
+  let addedDays = 0;
   
-  // Skip weekends (Saturday = 6, Sunday = 0)
-  while (date.getDay() === 0 || date.getDay() === 6) {
+  while (addedDays < 7) {
     date.setDate(date.getDate() + 1);
+    
+    // Skip weekends (Saturday = 6, Sunday = 0)
+    if (date.getDay() !== 0 && date.getDay() !== 6) {
+      dates.push(date.toISOString().split('T')[0]);
+      addedDays++;
+    }
   }
   
-  return date.toISOString().split('T')[0];
+  return dates;
 }
 
 // Seeded random number generator for deterministic mock data

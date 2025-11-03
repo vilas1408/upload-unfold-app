@@ -11,14 +11,14 @@ import Footer from "@/components/Footer";
 const Index = () => {
   const { toast } = useToast();
   const [selectedStock, setSelectedStock] = useState<{ symbol: string; name: string } | null>(null);
-  const [prediction, setPrediction] = useState<any>(null);
+  const [predictions, setPredictions] = useState<any[]>([]);
   const [historicalData, setHistoricalData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSelectStock = async (symbol: string, name: string) => {
     setSelectedStock({ symbol, name });
     setIsLoading(true);
-    setPrediction(null);
+    setPredictions([]);
 
     try {
       const { data, error } = await supabase.functions.invoke('predict-stock', {
@@ -28,7 +28,7 @@ const Index = () => {
       if (error) throw error;
 
       if (data.success) {
-        setPrediction(data.prediction);
+        setPredictions(data.predictions);
         setHistoricalData(data.historicalData);
         
         // Scroll to results
@@ -38,8 +38,8 @@ const Index = () => {
         }, 100);
 
         toast({
-          title: "Prediction Generated",
-          description: `Successfully predicted prices for ${name}`,
+          title: "7-Day Forecast Generated",
+          description: `Successfully generated 7-day predictions for ${name}`,
         });
       } else {
         throw new Error(data.error || 'Prediction failed');
@@ -61,11 +61,11 @@ const Index = () => {
       <Navbar />
       <Hero />
       <StockSelector onSelectStock={handleSelectStock} />
-      {(prediction || isLoading) && (
+      {(predictions.length > 0 || isLoading) && (
         <PredictionDisplay 
           stockSymbol={selectedStock?.symbol || ""}
           stockName={selectedStock?.name || ""}
-          prediction={prediction}
+          predictions={predictions}
           historicalData={historicalData}
           isLoading={isLoading}
         />

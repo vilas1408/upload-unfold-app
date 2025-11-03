@@ -20,36 +20,48 @@ export type Database = {
           company_name: string
           confidence: string
           created_at: string
+          days_ahead: number | null
           historical_data: Json
           id: string
           opening_price: number
           prediction_date: string
           reason: string
+          risk_factors: string | null
           symbol: string
+          technical_score: number | null
+          trend_alignment: string | null
         }
         Insert: {
           closing_price: number
           company_name: string
           confidence: string
           created_at?: string
+          days_ahead?: number | null
           historical_data: Json
           id?: string
           opening_price: number
           prediction_date: string
           reason: string
+          risk_factors?: string | null
           symbol: string
+          technical_score?: number | null
+          trend_alignment?: string | null
         }
         Update: {
           closing_price?: number
           company_name?: string
           confidence?: string
           created_at?: string
+          days_ahead?: number | null
           historical_data?: Json
           id?: string
           opening_price?: number
           prediction_date?: string
           reason?: string
+          risk_factors?: string | null
           symbol?: string
+          technical_score?: number | null
+          trend_alignment?: string | null
         }
         Relationships: []
       }
