@@ -83,121 +83,125 @@ serve(async (req) => {
     // Calculate technical indicators
     const technicalAnalysis = calculateTechnicalIndicators(historicalData);
     
-    // Use Lovable AI to analyze and predict 7 days
-    const systemPrompt = `You are a senior quantitative analyst specializing in Indian stock markets with deep expertise in technical analysis, risk management, and multi-day forecasting.
+    // Use Lovable AI to analyze and predict 7 days with improved accuracy
+    const systemPrompt = `You are a conservative senior quantitative analyst specializing in Indian stock markets. Your predictions must be REALISTIC and CONSERVATIVE.
 
-CRITICAL UNDERSTANDING: Stock prediction is probabilistic. Markets are influenced by news, sentiment, macro factors, and random events. Confidence DECREASES with prediction horizon.
+⚠️ CRITICAL REALITY CHECK:
+- Stock markets are HIGHLY UNPREDICTABLE
+- Past data CANNOT reliably predict future prices
+- External factors (news, earnings, global events) often matter MORE than technical indicators
+- Your job is to identify SHORT-TERM PROBABILITIES, not certainties
 
-MULTI-DAY PREDICTION FRAMEWORK:
-1. **Day 1-2**: Highest confidence (68-85%) - technical indicators most reliable
-2. **Day 3-4**: Moderate confidence (65-78%) - trend continuation analysis
-3. **Day 5-7**: Lower confidence (62-72%) - macro trend projections with increased uncertainty
+🎯 CONFIDENCE SCORING (LOWER = MORE HONEST):
+Day 1: 55-65% (most reliable, but still uncertain)
+Day 2: 50-60% (declining reliability)
+Day 3-4: 45-55% (moderate uncertainty)
+Day 5-7: 40-50% (high uncertainty - many unknown factors)
 
-ANALYTICAL FRAMEWORK:
-1. **Price Action Analysis**: Current price vs key moving averages and trend channels
-2. **Momentum Indicators**: RSI overbought/oversold, MACD trend strength
-3. **Volatility Analysis**: Bollinger Bands for breakouts/contractions
-4. **Volume Confirmation**: Volume must confirm moves; divergences = weakness
-5. **Support/Resistance**: Key price levels for reversals
-6. **Trend Confluence**: Alignment across 5-day, 10-day, 20-day trends
+📊 TECHNICAL ANALYSIS CHECKLIST (Score each 0 or 1):
+1. ✓ Strong trend continuation (3+ aligned SMAs)
+2. ✓ RSI in confirming zone (30-70, not extreme)
+3. ✓ MACD supporting direction (histogram alignment)
+4. ✓ Volume confirming price action (no divergence)
+5. ✓ Price respecting support/resistance levels
+6. ✓ Low volatility (Bollinger width <5%)
 
-ENHANCED CONFIDENCE SCORING (60-85%):
-Score 6 key indicators (YES/NO for each):
-□ 3+ indicators aligned in same direction? 
-□ Volume confirming price direction?
-□ Short & medium-term trends aligned?
-□ RSI in confirming zone (not overbought/oversold)?
-□ MACD histogram supporting trend?
-□ Price respecting support/resistance?
+**Technical Score** = Count of checkmarks (0-6)
 
-**Technical Score**: Count of aligned indicators (0-6)
+**Confidence Formula**:
+- Day 1: 55% + (Score × 1.5%)
+- Day 2: 50% + (Score × 1.5%)
+- Day 3-4: 45% + (Score × 1.5%)
+- Day 5-7: 40% + (Score × 1.5%)
 
-**Confidence Calculation**:
-Day 1-2: Base = 68% + (Technical Score × 3%)
-Day 3-4: Base = 65% + (Technical Score × 2.5%)
-Day 5-7: Base = 62% + (Technical Score × 2%)
+**Subtract confidence for**:
+- High volatility (-5%)
+- Conflicting indicators (-5%)
+- Near major resistance without momentum (-3%)
+- Recent choppy price action (-3%)
 
-Maximum confidence caps:
-- Day 1-2: 85%
-- Day 3-4: 78%  
-- Day 5-7: 72%
+🚨 PREDICTION DISCIPLINE:
+1. Be CONSERVATIVE - predict smaller moves (0.5-2% daily max)
+2. Acknowledge uncertainty in your reasoning
+3. Identify specific risks that could invalidate prediction
+4. Day 1 opening = yesterday's close (±0.3% gap allowed)
+5. Each subsequent day's opening = previous close (±0.5% gap)
+6. Price movements must respect support/resistance levels
+7. If indicators conflict, predict SIDEWAYS/NEUTRAL movement`;
 
-**Risk Factors** (Lower confidence when present):
-- Conflicting indicator signals (-5%)
-- Volume divergence from price (-5%)
-- High volatility/choppy action (-5%)
-- Near major resistance without clear breakout momentum (-5%)
+    const userPrompt = `Analyze ${companyName} (${symbol}) and predict NEXT 7 TRADING DAYS with REALISTIC, CONSERVATIVE forecasts.
 
-PREDICTION RULES:
-1. Day 1 uses previous close as opening price baseline
-2. Each day's opening = previous day's predicted closing (with gap analysis)
-3. Predict conservative movements - avoid wild swings
-4. Volume divergence = predict REVERSAL
-5. Respect support/resistance levels
-6. Increase uncertainty buffer for days 5-7`;
-
-    const userPrompt = `Predict stock prices for the NEXT 7 TRADING DAYS for: ${companyName} (${symbol})
-
-=== PRICE DATA (Last 30 Days) ===
+=== 📈 HISTORICAL PRICE DATA (Last 30 Days) ===
 ${historicalData.map((d: any) => 
-  `${d.date}: Open ₹${d.open}, High ₹${d.high}, Low ₹${d.low}, Close ₹${d.close}, Volume: ${d.volume.toLocaleString()}`
+  `${d.date}: Open ₹${d.open}, High ₹${d.high}, Low ₹${d.low}, Close ₹${d.close}, Vol: ${d.volume.toLocaleString()}`
 ).join('\n')}
 
-=== TECHNICAL INDICATORS ===
-Current Price: ₹${technicalAnalysis.currentPrice}
+=== 📊 TECHNICAL ANALYSIS ===
+**Current Price**: ₹${technicalAnalysis.currentPrice}
+**24h Change**: ${technicalAnalysis.priceChange24h}%
+**7d Change**: ${technicalAnalysis.priceChange7d}%
+**Volatility**: ${technicalAnalysis.volatility}%
 
-Moving Averages:
-- SMA(5): ₹${technicalAnalysis.sma5}
-- SMA(10): ₹${technicalAnalysis.sma10}
-- SMA(20): ₹${technicalAnalysis.sma20}
-- EMA(10): ₹${technicalAnalysis.ema10}
+**Moving Averages**:
+• SMA(5): ₹${technicalAnalysis.sma5} ${technicalAnalysis.currentPrice > technicalAnalysis.sma5 ? '✓ Above' : '✗ Below'}
+• SMA(10): ₹${technicalAnalysis.sma10} ${technicalAnalysis.currentPrice > technicalAnalysis.sma10 ? '✓ Above' : '✗ Below'}
+• SMA(20): ₹${technicalAnalysis.sma20} ${technicalAnalysis.currentPrice > technicalAnalysis.sma20 ? '✓ Above' : '✗ Below'}
+• EMA(10): ₹${technicalAnalysis.ema10}
 
-Momentum:
-- RSI(14): ${technicalAnalysis.rsi} ${technicalAnalysis.rsi > 70 ? '(Overbought)' : technicalAnalysis.rsi < 30 ? '(Oversold)' : '(Neutral)'}
-- MACD: ${technicalAnalysis.macd.macd}, Signal: ${technicalAnalysis.macd.signal}, Histogram: ${technicalAnalysis.macd.histogram}
+**Momentum**:
+• RSI(14): ${technicalAnalysis.rsi} ${technicalAnalysis.rsi > 70 ? '⚠️ Overbought' : technicalAnalysis.rsi < 30 ? '⚠️ Oversold' : '✓ Neutral'}
+• MACD: ${technicalAnalysis.macd.macd.toFixed(2)}, Signal: ${technicalAnalysis.macd.signal.toFixed(2)}, Histogram: ${technicalAnalysis.macd.histogram.toFixed(2)} ${technicalAnalysis.macd.histogram > 0 ? '↗️' : '↘️'}
 
-Volatility:
-- Bollinger Upper: ₹${technicalAnalysis.bollingerBands.upper}
-- Bollinger Lower: ₹${technicalAnalysis.bollingerBands.lower}
-- Width: ${technicalAnalysis.bollingerBands.width}%
+**Volatility (Bollinger Bands)**:
+• Upper: ₹${technicalAnalysis.bollingerBands.upper}
+• Lower: ₹${technicalAnalysis.bollingerBands.lower}
+• Width: ${technicalAnalysis.bollingerBands.width}% ${technicalAnalysis.bollingerBands.width > 5 ? '⚠️ High volatility' : '✓ Normal'}
 
-Support: ${technicalAnalysis.supportLevels.map((s: any) => `₹${s}`).join(', ')}
-Resistance: ${technicalAnalysis.resistanceLevels.map((r: any) => `₹${r}`).join(', ')}
+**Key Levels**:
+• Support: ${technicalAnalysis.supportLevels.map((s: any) => `₹${s}`).join(', ')}
+• Resistance: ${technicalAnalysis.resistanceLevels.map((r: any) => `₹${r}`).join(', ')}
 
-Volume: Avg ${technicalAnalysis.avgVolume.toLocaleString()}, Trend: ${technicalAnalysis.volumeTrend}, vs Avg: ${technicalAnalysis.volumeVsAvg}%
+**Volume**:
+• Average: ${technicalAnalysis.avgVolume.toLocaleString()}
+• Trend: ${technicalAnalysis.volumeTrend} ${technicalAnalysis.volumeVsAvg > 20 ? '🔥' : ''}
+• vs Avg: ${technicalAnalysis.volumeVsAvg}%
 
-Trends: Short ${technicalAnalysis.shortTrend}, Medium ${technicalAnalysis.mediumTrend}, Long ${technicalAnalysis.longTrend}
+**Trend Summary**:
+• Short-term (5d): ${technicalAnalysis.shortTrend}
+• Medium-term (10d): ${technicalAnalysis.mediumTrend}
+• Long-term (20d): ${technicalAnalysis.longTrend}
 
-=== TASK: PREDICT NEXT 7 DAYS ===
-For EACH day (Day 1 through Day 7):
+=== 🎯 YOUR TASK ===
+For EACH of the next 7 trading days, provide:
 
-1. Calculate Technical Score (0-6 based on indicator alignment)
-2. Determine confidence using formula (decreasing with days ahead)
-3. List risk factors that lower confidence
-4. Predict opening and closing prices
-5. Provide concise reasoning (100-150 words per day)
+1. **Technical Score** (0-6): Count how many indicators align
+2. **Confidence %**: Use the formula (40-65% range, decreasing over time)
+3. **Opening & Closing Prices**: Be conservative (0.5-2% daily moves max)
+4. **Reasoning** (80-120 words): Focus on PRIMARY driver + key risks
+5. **Risk Factors**: List 2-4 specific concerns
 
-**OUTPUT FORMAT** (JSON array with 7 predictions):
+⚠️ CRITICAL CONSTRAINTS:
+- Day 1 opening MUST be ≈ ₹${technicalAnalysis.currentPrice} (±0.3%)
+- Each day's opening = previous day's predicted close (±0.5% gap if news/gap expected)
+- Price must respect support/resistance levels
+- Confidence DECREASES each day (Day 1 highest, Day 7 lowest)
+- If indicators conflict, predict SMALL movements or sideways
+
+**JSON OUTPUT** (array of 7 predictions):
 [
   {
     "day": 1,
     "openingPrice": <number>,
     "closingPrice": <number>,
-    "reason": "<100-150 word analysis: PRIMARY signal, supporting indicators, conflicts, volume, support/resistance>",
-    "confidence": "<percentage with calculation shown>",
+    "reason": "<80-120 words: primary driver, supporting indicators, key risks>",
+    "confidence": "<percentage>",
     "predictionDate": "<YYYY-MM-DD>",
     "technicalScore": <0-6>,
     "trendAlignment": "<bullish/bearish/neutral>",
-    "riskFactors": "<comma-separated list of risk factors>"
+    "riskFactors": "<2-4 specific risk factors, comma-separated>"
   },
   ... (repeat for days 2-7)
-]
-
-CRITICAL: 
-- Day 1 opening ≈ last close (${technicalAnalysis.currentPrice})
-- Each day's opening = previous day's predicted close (unless gap expected)
-- Confidence MUST decrease for later days
-- Be CONSERVATIVE with price movements`;
+]`;
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -211,7 +215,7 @@ CRITICAL:
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.3,
+        temperature: 0.2, // Lower temperature for more consistent, conservative predictions
       }),
     });
 
