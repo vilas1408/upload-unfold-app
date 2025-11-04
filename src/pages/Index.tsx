@@ -4,21 +4,21 @@ import { useToast } from "@/hooks/use-toast";
 import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
 import StockSelector from "@/components/StockSelector";
-import PredictionChart from "@/components/PredictionChart";
 import PredictionDisplay from "@/components/PredictionDisplay";
 import Footer from "@/components/Footer";
 
 const Index = () => {
   const { toast } = useToast();
   const [selectedStock, setSelectedStock] = useState<{ symbol: string; name: string } | null>(null);
-  const [predictions, setPredictions] = useState<any[]>([]);
-  const [historicalData, setHistoricalData] = useState<any[]>([]);
+  const [prediction, setPrediction] = useState<any | null>(null);
+  const [historicalData, setHistoricalData] = useState<any[] | null>(null);
+  const [isCached, setIsCached] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSelectStock = async (symbol: string, name: string) => {
     setSelectedStock({ symbol, name });
     setIsLoading(true);
-    setPredictions([]);
+    setPrediction(null);
 
     try {
       const { data, error } = await supabase.functions.invoke('predict-stock', {
@@ -28,19 +28,22 @@ const Index = () => {
       if (error) throw error;
 
       if (data.success) {
-        setPredictions(data.predictions);
+        setPrediction(data.prediction);
         setHistoricalData(data.historicalData);
+        setIsCached(data.cached || false);
         
-        // Scroll to results
-        setTimeout(() => {
-          const resultsSection = document.getElementById('prediction-results');
-          resultsSection?.scrollIntoView({ behavior: 'smooth' });
-        }, 100);
-
         toast({
-          title: "7-Day Forecast Generated",
-          description: `Successfully generated 7-day predictions for ${name}`,
+          title: "Prediction Generated",
+          description: `Next-day prediction for ${name} is ready! ${data.cached ? '(Using today\'s cached prediction)' : ''}`,
         });
+
+        // Scroll to prediction
+        setTimeout(() => {
+          document.getElementById('prediction')?.scrollIntoView({ 
+            behavior: 'smooth',
+            block: 'start'
+          });
+        }, 100);
       } else {
         throw new Error(data.error || 'Prediction failed');
       }
@@ -61,16 +64,19 @@ const Index = () => {
       <Navbar />
       <Hero />
       <StockSelector onSelectStock={handleSelectStock} />
-      {(predictions.length > 0 || isLoading) && (
+      {isLoading && (
+        <div className="text-center py-20">
+          <p className="text-xl text-muted-foreground">Analyzing 30 days of data and generating AI prediction...</p>
+        </div>
+      )}
+      {selectedStock && prediction && historicalData && (
         <PredictionDisplay 
-          stockSymbol={selectedStock?.symbol || ""}
-          stockName={selectedStock?.name || ""}
-          predictions={predictions}
+          stock={selectedStock} 
+          prediction={prediction}
           historicalData={historicalData}
-          isLoading={isLoading}
+          isCached={isCached}
         />
       )}
-      <PredictionChart />
       <Footer />
     </div>
   );
