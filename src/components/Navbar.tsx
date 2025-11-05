@@ -25,7 +25,14 @@ const Navbar = () => {
           </a>
         </div>
 
-        <Button className="gradient-primary">
+        <Button 
+          className="gradient-primary"
+          onClick={() => {
+            document.getElementById('dashboard')?.scrollIntoView({ 
+              behavior: 'smooth' 
+            });
+          }}
+        >
           Get Started
         </Button>
       </div>
