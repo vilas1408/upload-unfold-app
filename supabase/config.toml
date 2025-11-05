@@ -69,3 +69,6 @@ backend = "postgres"
 
 [functions.predict-stock]
 verify_jwt = false
+
+[functions.predict-options]
+verify_jwt = false
