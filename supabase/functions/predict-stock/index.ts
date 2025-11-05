@@ -73,9 +73,9 @@ serve(async (req) => {
 
     console.log('No cache found, generating new prediction');
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured');
+    const GOOGLE_GEMINI_API_KEY = Deno.env.get('GOOGLE_GEMINI_API_KEY');
+    if (!GOOGLE_GEMINI_API_KEY) {
+      throw new Error('GOOGLE_GEMINI_API_KEY is not configured');
     }
 
     // Fetch real historical data from Yahoo Finance (30 days for better analysis)
@@ -284,45 +284,55 @@ Provide a SINGLE, COMPREHENSIVE prediction for **TOMORROW (next trading day)** w
   "riskFactors": "<3-5 specific risk factors, comma-separated>"
 }`;
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-pro',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.1, // Very low temperature for maximum consistency and reliability
-      }),
-    });
+    // Prepare request for Google Gemini API
+    const geminiPayload = {
+      contents: [{
+        parts: [{
+          text: `${systemPrompt}\n\n${userPrompt}`
+        }]
+      }],
+      generationConfig: {
+        temperature: 0.1,
+        topK: 40,
+        topP: 0.95,
+        maxOutputTokens: 8192,
+      }
+    };
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${GOOGLE_GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(geminiPayload),
+      }
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('AI gateway error:', response.status, errorText);
-      throw new Error(`AI gateway error: ${response.status} - ${errorText}`);
+      console.error('Google Gemini API error:', response.status, errorText);
+      throw new Error(`Google Gemini API error: ${response.status} - ${errorText}`);
     }
 
     let aiResponse;
     try {
       const responseText = await response.text();
-      console.log('Raw AI Response:', responseText.substring(0, 500)); // Log first 500 chars
+      console.log('Raw Gemini Response:', responseText.substring(0, 500)); // Log first 500 chars
       aiResponse = JSON.parse(responseText);
     } catch (parseError) {
-      console.error('Failed to parse AI response:', parseError);
-      throw new Error('Invalid response from AI gateway. Please try again.');
+      console.error('Failed to parse Gemini response:', parseError);
+      throw new Error('Invalid response from Google Gemini API. Please try again.');
     }
 
-    if (!aiResponse.choices?.[0]?.message?.content) {
-      console.error('Unexpected AI response structure:', aiResponse);
-      throw new Error('Invalid AI response structure');
+    if (!aiResponse.candidates?.[0]?.content?.parts?.[0]?.text) {
+      console.error('Unexpected Gemini response structure:', aiResponse);
+      throw new Error('Invalid Gemini response structure');
     }
 
-    const content = aiResponse.choices[0].message.content;
-    console.log('AI Response:', content);
+    const content = aiResponse.candidates[0].content.parts[0].text;
+    console.log('Gemini AI Response:', content);
 
     // Extract JSON object from response (single prediction)
     const jsonMatch = content.match(/\{[\s\S]*\}/);
