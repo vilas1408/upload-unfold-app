@@ -280,50 +280,57 @@ Provide a SINGLE, COMPREHENSIVE options trading recommendation with:
 // Helper function to fetch real stock data
 async function fetchRealStockData(symbol: string) {
   try {
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(endDate.getDate() - 30);
-
-    const period1 = Math.floor(startDate.getTime() / 1000);
-    const period2 = Math.floor(endDate.getTime() / 1000);
-
-    // Format symbol correctly for Yahoo Finance
-    // Indices (starting with ^) don't need .NS suffix
-    // Stocks need .NS suffix if not already present
+    // Convert symbol to Yahoo Finance format
     let yahooSymbol = symbol;
-    if (!symbol.startsWith('^') && !symbol.endsWith('.NS')) {
-      yahooSymbol = `${symbol}.NS`;
+    
+    // Skip if already has a suffix or is an index
+    if (!symbol.includes('.') && !symbol.startsWith('^')) {
+      // BSE stocks are numerical codes - add .BO suffix
+      if (/^\d+$/.test(symbol)) {
+        yahooSymbol = `${symbol}.BO`;
+      } else {
+        // NSE stocks are alphabetic - add .NS suffix
+        yahooSymbol = `${symbol}.NS`;
+      }
     }
-
-    console.log(`Fetching ${symbol} as ${yahooSymbol}`);
-
-    const url = `https://query1.finance.yahoo.com/v7/finance/download/${yahooSymbol}?period1=${period1}&period2=${period2}&interval=1d&events=history`;
+    
+    // Calculate date range (last 30 days)
+    const endDate = Math.floor(Date.now() / 1000);
+    const startDate = endDate - (30 * 24 * 60 * 60);
+    
+    // Fetch from Yahoo Finance Chart API (more reliable than download)
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?period1=${startDate}&period2=${endDate}&interval=1d`;
+    
+    console.log(`Fetching ${symbol} as ${yahooSymbol} (is numeric: ${/^\d+$/.test(symbol)})`);
     
     const response = await fetch(url);
-    
     if (!response.ok) {
       throw new Error(`Failed to fetch data for ${symbol} (tried ${yahooSymbol})`);
     }
-
-    const csvText = await response.text();
-    const lines = csvText.trim().split('\n');
-    const data = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',');
-      if (values.length >= 6 && values[1] !== 'null') {
-        data.push({
-          date: values[0],
-          open: parseFloat(values[1]),
-          high: parseFloat(values[2]),
-          low: parseFloat(values[3]),
-          close: parseFloat(values[4]),
-          volume: parseInt(values[6] || '0')
-        });
-      }
+    
+    const data = await response.json();
+    const result = data.chart.result[0];
+    
+    if (!result || !result.timestamp) {
+      throw new Error('Invalid stock data received');
     }
+    
+    const timestamps = result.timestamp;
+    const quotes = result.indicators.quote[0];
+    
+    const historicalData = timestamps.map((timestamp: number, index: number) => {
+      const date = new Date(timestamp * 1000);
+      return {
+        date: date.toISOString().split('T')[0],
+        open: quotes.open[index] || 0,
+        high: quotes.high[index] || 0,
+        low: quotes.low[index] || 0,
+        close: quotes.close[index] || 0,
+        volume: quotes.volume[index] || 0
+      };
+    }).filter((d: any) => d.close > 0); // Filter out invalid entries
 
-    return data;
+    return historicalData;
   } catch (error) {
     console.error('Error fetching stock data:', error);
     throw error;
