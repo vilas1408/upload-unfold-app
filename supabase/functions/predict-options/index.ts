@@ -29,89 +29,65 @@ serve(async (req) => {
     const historicalData = await fetchRealStockData(symbol);
     const technicalAnalysis = calculateTechnicalIndicators(historicalData);
     
-    const systemPrompt = `You are an elite options trading strategist with 20+ years of experience in derivatives markets, specializing in Indian stock and index options. You combine advanced options pricing models, volatility analysis, and technical indicators to create high-probability trading strategies.
+    const systemPrompt = `You are an elite options trading expert specializing in Indian stock and index options. You provide SIMPLE, DIRECTIONAL options strategies based on real-time market data and technical analysis.
 
-🎯 OPTIONS TRADING EXPERTISE:
-- Deep understanding of option Greeks (Delta, Gamma, Theta, Vega)
-- Volatility analysis (IV Rank, IV Percentile, Historical vs Implied Volatility)
-- Options strategies (spreads, straddles, strangles, iron condors, butterflies)
-- Risk management and position sizing
-- Time decay analysis and optimal entry/exit timing
-- Understanding of open interest and volume patterns
+🎯 YOUR STRATEGY RULES:
+- **BULLISH MARKET**: Recommend BUY CALL options ONLY
+- **BEARISH MARKET**: Recommend BUY PUT options ONLY
+- **NO COMPLEX STRATEGIES**: No spreads, straddles, iron condors, or hedging strategies
+- **SIMPLE DIRECTIONAL BETS**: One clear direction, one simple trade
 
 📊 ANALYSIS FRAMEWORK:
 
-**1. Volatility Assessment:**
-- Calculate current IV Rank (0-100 scale)
-- Compare Historical Volatility vs Implied Volatility
-- Identify if options are relatively cheap or expensive
-- Determine if market expects significant moves
+**1. Market Direction Analysis:**
+- Use moving averages (SMA5, SMA10, SMA20) to determine trend
+- RSI for momentum (>70 overbought, <30 oversold)
+- MACD for trend confirmation
+- Price action and volume patterns
+- Support/resistance levels
 
-**2. Technical Analysis for Options:**
-- Identify key support/resistance levels for strike selection
-- Analyze trend strength (for directional strategies)
-- Volume analysis (for confirmation)
-- Price action patterns
-- RSI, MACD for momentum confirmation
+**2. Decision Logic:**
+- If price > SMA20 AND RSI < 70 AND MACD positive → BULLISH → BUY CALL
+- If price < SMA20 AND RSI > 30 AND MACD negative → BEARISH → BUY PUT
+- Strong uptrend (SMA5 > SMA10 > SMA20) → BULLISH → BUY CALL
+- Strong downtrend (SMA5 < SMA10 < SMA20) → BEARISH → BUY PUT
 
 **3. Strike Price Selection:**
-- ATM (At The Money) for maximum leverage
-- ITM (In The Money) for higher probability
-- OTM (Out of The Money) for speculative plays
-- Consider delta (0.30-0.70 for balanced risk/reward)
+- ATM (At The Money) for balanced risk/reward
+- Slightly OTM (Out of The Money) for higher return potential
+- Strike should be within ±5% of current price
 
-**4. Strategy Recommendation:**
-- Bullish: Buy Calls, Bull Call Spread, Cash-Secured Puts
-- Bearish: Buy Puts, Bear Put Spread, Covered Calls
-- Neutral: Iron Condor, Butterfly Spread, Calendar Spread
-- High Volatility: Sell premium strategies (credit spreads)
-- Low Volatility: Buy premium strategies (debit spreads)
+**4. Premium Calculation (Realistic):**
+- ATM Call/Put: 2-4% of strike price
+- Slightly OTM: 1-3% of strike price
+- Adjust based on volatility (higher volatility = higher premium)
 
 **5. Risk Management:**
-- Define max loss (limited to premium paid for debit strategies)
-- Calculate max gain potential
-- Determine breakeven points
-- Set stop-loss based on technical levels
-- Position sizing (never risk more than 2-5% of capital)
+- Max loss = Premium paid
+- Target return: 50-100% of premium
+- Stop loss: Exit if premium drops 50%
+- Time frame: 7-30 days (avoid weekly expiries)
 
-**6. Time Frame Selection:**
-- Consider theta decay (time value erosion)
-- Weekly options for short-term plays (high risk/reward)
-- Monthly options for standard strategies
-- LEAPS for long-term directional bets
-- Balance between time value and liquidity
+📈 PROBABILITY FRAMEWORK:
+- 65-75%: Strong trend, clear momentum, good technical setup
+- 55-64%: Moderate trend, decent indicators
+- 45-54%: Weak signals, mixed indicators
 
-🚨 OPTIONS TRADING DISCIPLINE:
-1. Options are wasting assets - time decay is constant
-2. High leverage means high risk - position sizing is critical
-3. IV is mean-reverting - buy when low, sell when high
-4. Greeks change as price moves - monitor position dynamically
-5. Probability of profit ≠ certainty - manage risk strictly
-6. Liquidity matters - check open interest and volume
-7. Never hold options till expiry (unless exercising)
+🚨 CRITICAL RULES:
+- ONE strategy ONLY: Either "Long Call" or "Long Put"
+- NO hedging, NO spreads, NO complex strategies
+- Base decision on REAL current market data provided
+- Premium must be realistic based on strike and volatility
+- Breakeven = Strike + Premium (for CALL) OR Strike - Premium (for PUT)`;
 
-📈 PROBABILITY FRAMEWORK (45-75%):
-- 70-75%: High IV, clear technical setup, favorable Greeks, strong trend
-- 60-69%: Good technical setup, decent IV levels, acceptable Greeks
-- 50-59%: Mixed signals, moderate uncertainty, average setup
-- 45-49%: High uncertainty, conflicting indicators, risky setup
+    const userPrompt = `Analyze ${type === 'share' ? 'stock' : 'index'} options for ${name} (${symbol}) and provide a SIMPLE DIRECTIONAL options recommendation based on current live market data.
 
-⚠️ CRITICAL CONSTRAINTS:
-- Strike prices must be realistic (ATM ±10% range typically)
-- Premium calculations must be logical
-- Greeks must follow standard options pricing relationships
-- Max loss for debit strategies = premium paid
-- Breakeven = Strike ± Premium (for simple strategies)
-- Time frames should match volatility environment`;
-
-    const userPrompt = `Analyze ${type === 'share' ? 'stock' : 'index'} options for ${name} (${symbol}) and recommend the BEST options trading strategy with precise parameters.
-
-=== 📈 HISTORICAL PRICE DATA (Last 30 Days) ===
+=== 📈 LIVE MARKET DATA (Last 30 Days) ===
 ${historicalData.map((d: any) => 
   `${d.date}: Open ₹${d.open.toFixed(2)}, High ₹${d.high.toFixed(2)}, Low ₹${d.low.toFixed(2)}, Close ₹${d.close.toFixed(2)}, Vol: ${d.volume.toLocaleString()}`
 ).join('\n')}
 
-=== 📊 TECHNICAL ANALYSIS ===
+=== 📊 CURRENT TECHNICAL ANALYSIS ===
 **Current Status:**
 • Last Close: ₹${technicalAnalysis.currentPrice.toFixed(2)}
 • 24h Change: ${technicalAnalysis.priceChange24h.toFixed(2)}%
@@ -123,106 +99,103 @@ ${historicalData.map((d: any) =>
 • SMA(10): ₹${technicalAnalysis.sma10.toFixed(2)}
 • SMA(20): ₹${technicalAnalysis.sma20.toFixed(2)}
 
-**Momentum:**
+**Momentum Indicators:**
 • RSI(14): ${technicalAnalysis.rsi.toFixed(2)}
-• MACD: ${technicalAnalysis.macd.histogram.toFixed(2)}
+• MACD Histogram: ${technicalAnalysis.macd.histogram.toFixed(2)}
 
-**Support/Resistance:**
+**Key Levels:**
 • Resistance: ${technicalAnalysis.resistanceLevels.map((r: any) => `₹${r.toFixed(2)}`).join(', ')}
 • Support: ${technicalAnalysis.supportLevels.map((s: any) => `₹${s.toFixed(2)}`).join(', ')}
 
 === 🎯 YOUR TASK ===
 
-Provide a SINGLE, COMPREHENSIVE options trading recommendation with:
+Based on the LIVE data above, provide ONE simple directional options recommendation:
 
-1. **Strategy Name**: Clear strategy name (e.g., "Bull Call Spread", "Long Call", "Iron Condor")
+**IF BULLISH (uptrend detected):**
+- Strategy: "Long Call"
+- Recommend BUY CALL option ONLY
 
-2. **Strike Price**: Optimal strike price for the recommended strategy
+**IF BEARISH (downtrend detected):**
+- Strategy: "Long Put"  
+- Recommend BUY PUT option ONLY
 
-3. **Option Type**: CALL or PUT
+**Provide these details:**
 
-4. **Target Price**: Expected underlying price target
+1. **Strategy Name**: MUST be "Long Call" OR "Long Put"
 
-5. **Stop Loss**: Price level to exit position
+2. **Strike Price**: Single strike price (ATM or slightly OTM, within ±5% of current price)
 
-6. **Expected Return**: Realistic percentage return (based on premium)
+3. **Option Type**: "CALL" or "PUT"
 
-7. **Probability**: Success probability (45-75% range)
+4. **Target Price**: Expected price target
 
-8. **Max Loss**: Maximum possible loss (in ₹)
+5. **Stop Loss**: Exit price if trade goes wrong
 
-9. **Max Gain**: Maximum possible gain (in ₹)
+6. **Expected Return**: 50-100% of premium paid
 
-10. **Breakeven**: Breakeven price point
+7. **Probability**: Success probability (45-75%)
 
-11. **Premium Details**: Estimated option premiums for each leg
-    - For single options: Single premium value
-    - For spreads: Premium for buy leg and sell leg
-    - Include net debit/credit
+8. **Max Loss**: Premium paid (in ₹)
 
-12. **IV Rank**: Estimated Implied Volatility Rank (0-100)
+9. **Max Gain**: Potential profit (in ₹)
+
+10. **Breakeven**: Strike + Premium (CALL) OR Strike - Premium (PUT)
+
+11. **Premium Details**: 
+    - buyLeg: Premium to pay for the option (₹)
+    - sellLeg: null (no sell leg in simple strategy)
+    - netCost: Same as buyLeg
+    - description: Brief explanation of premium
+
+12. **IV Rank**: 0-100 (estimated volatility rank)
 
 13. **Greeks** (estimated):
-    - Delta: 0.00 to 1.00 (rate of change)
-    - Gamma: (delta sensitivity)
-    - Theta: (daily time decay)
-    - Vega: (volatility sensitivity)
+    - delta: 0.40-0.60 (typical for ATM options)
+    - gamma: Small positive number
+    - theta: Negative (time decay per day)
+    - vega: Positive (volatility sensitivity)
 
-14. **Reasoning**: 150-200 word analysis explaining:
-    - Why this strategy is optimal
-    - Volatility environment assessment
-    - Technical setup supporting the trade
-    - Risk/reward justification
-    - Key price levels to monitor
-    - What could go wrong
+14. **Reasoning**: 150-200 words explaining:
+    - Market direction (bullish/bearish) based on live data
+    - Technical indicators supporting the trade
+    - Why this strike price and expiry
+    - Risk and reward expectations
+    - Key price levels to watch
 
-14. **Risk Level**: Low/Medium/High
+15. **Risk Level**: "Medium" or "High"
 
-15. **Time Frame**: Recommended holding period (e.g., "7-14 days", "1 month", "Weekly expiry")
+16. **Time Frame**: "7-14 days" or "15-30 days"
 
-16. **Technical Score**: 0-10 (based on technical setup quality)
+17. **Technical Score**: 0-10 (quality of setup)
 
-**IMPORTANT:**
-- Strike price should be realistic (within ±10% of current price for ATM strategies)
-- Calculate realistic premium based on intrinsic value + time value
-- For ITM options: Premium = (Current Price - Strike) + Time Value (typically 1-2% of strike)
-- For ATM options: Premium ≈ 2-4% of strike price (depending on volatility)
-- For OTM options: Premium = Time Value only (1-3% of strike)
-- For spreads, specify both buy and sell leg premiums
-- Expected return should be achievable (typically 20-100% for debit strategies)
-- Greeks should follow standard options relationships
-- Max loss for long options = premium paid
-- Probability should reflect actual market conditions
-- Time frame should match volatility and trend strength
-
-**JSON OUTPUT**:
+**JSON OUTPUT FORMAT**:
 {
-  "strategy": "<strategy name>",
-  "strikePrice": "<string describing all strikes>",
-  "optionType": "CALL" | "PUT" | "Mixed (Call & Put)",
-  "targetPrice": "<string or number>",
+  "strategy": "Long Call" | "Long Put",
+  "strikePrice": "₹<number>",
+  "optionType": "CALL" | "PUT",
+  "targetPrice": <number>,
   "stopLoss": <number>,
-  "expectedReturn": <percentage number>,
-  "probability": "<percentage as string>",
+  "expectedReturn": <percentage>,
+  "probability": "<percentage>%",
   "maxLoss": <number>,
   "maxGain": <number>,
-  "breakeven": "<string describing breakeven(s)>",
+  "breakeven": "₹<number>",
   "premium": {
     "buyLeg": <number>,
-    "sellLeg": <number or null>,
+    "sellLeg": null,
     "netCost": <number>,
-    "description": "<string explaining premium structure>"
+    "description": "<brief explanation>"
   },
   "ivRank": <0-100>,
   "greeks": {
-    "delta": <number>,
-    "gamma": <number>,
-    "theta": <number>,
-    "vega": <number>
+    "delta": <0.40-0.60>,
+    "gamma": <small positive>,
+    "theta": <negative>,
+    "vega": <positive>
   },
   "reasoning": "<150-200 words>",
-  "riskLevel": "Low" | "Medium" | "High",
-  "timeFrame": "<string>",
+  "riskLevel": "Medium" | "High",
+  "timeFrame": "<days>",
   "technicalScore": <0-10>
 }`;
 
