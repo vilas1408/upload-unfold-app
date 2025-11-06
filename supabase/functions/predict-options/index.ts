@@ -287,12 +287,22 @@ async function fetchRealStockData(symbol: string) {
     const period1 = Math.floor(startDate.getTime() / 1000);
     const period2 = Math.floor(endDate.getTime() / 1000);
 
-    const url = `https://query1.finance.yahoo.com/v7/finance/download/${symbol}.NS?period1=${period1}&period2=${period2}&interval=1d&events=history`;
+    // Format symbol correctly for Yahoo Finance
+    // Indices (starting with ^) don't need .NS suffix
+    // Stocks need .NS suffix if not already present
+    let yahooSymbol = symbol;
+    if (!symbol.startsWith('^') && !symbol.endsWith('.NS')) {
+      yahooSymbol = `${symbol}.NS`;
+    }
+
+    console.log(`Fetching ${symbol} as ${yahooSymbol}`);
+
+    const url = `https://query1.finance.yahoo.com/v7/finance/download/${yahooSymbol}?period1=${period1}&period2=${period2}&interval=1d&events=history`;
     
     const response = await fetch(url);
     
     if (!response.ok) {
-      throw new Error(`Failed to fetch data for ${symbol}`);
+      throw new Error(`Failed to fetch data for ${symbol} (tried ${yahooSymbol})`);
     }
 
     const csvText = await response.text();
