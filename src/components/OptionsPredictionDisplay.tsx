@@ -5,15 +5,21 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 
 interface OptionsPrediction {
   strategy: string;
-  strikePrice: number;
-  optionType: 'CALL' | 'PUT';
-  targetPrice: number;
+  strikePrice: string | number;
+  optionType: 'CALL' | 'PUT' | 'Mixed (Call & Put)';
+  targetPrice: string | number;
   stopLoss: number;
   expectedReturn: number;
   probability: string;
   maxLoss: number;
   maxGain: number;
-  breakeven: number;
+  breakeven: string | number;
+  premium?: {
+    buyLeg: number;
+    sellLeg: number | null;
+    netCost: number;
+    description: string;
+  };
   ivRank: number;
   greeks: {
     delta: number;
@@ -100,7 +106,7 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Strike Price</p>
-                  <p className="text-lg font-semibold">₹{prediction.strikePrice.toFixed(2)}</p>
+                  <p className="text-lg font-semibold">{typeof prediction.strikePrice === 'number' ? `₹${prediction.strikePrice.toFixed(2)}` : prediction.strikePrice}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -162,7 +168,7 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Target Price:</span>
-                  <span className="font-semibold text-green-500">₹{prediction.targetPrice.toFixed(2)}</span>
+                  <span className="font-semibold text-green-500">{typeof prediction.targetPrice === 'number' ? `₹${prediction.targetPrice.toFixed(2)}` : prediction.targetPrice}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Stop Loss:</span>
@@ -170,10 +176,33 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Breakeven:</span>
-                  <span className="font-semibold">₹{prediction.breakeven.toFixed(2)}</span>
+                  <span className="font-semibold">{typeof prediction.breakeven === 'number' ? `₹${prediction.breakeven.toFixed(2)}` : prediction.breakeven}</span>
                 </div>
               </div>
             </div>
+
+            {prediction.premium && (
+              <div>
+                <h4 className="font-semibold mb-3">Premium Details</h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Buy Leg Premium:</span>
+                    <span className="font-semibold text-blue-500">₹{prediction.premium.buyLeg.toFixed(2)}</span>
+                  </div>
+                  {prediction.premium.sellLeg !== null && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Sell Leg Premium:</span>
+                      <span className="font-semibold text-green-500">₹{prediction.premium.sellLeg.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center pt-2 border-t border-border">
+                    <span className="text-sm font-semibold">Net Cost:</span>
+                    <span className="font-bold text-primary">₹{prediction.premium.netCost.toFixed(2)}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">{prediction.premium.description}</p>
+                </div>
+              </div>
+            )}
 
             <div className="md:col-span-2">
               <h4 className="font-semibold mb-3">Option Greeks</h4>

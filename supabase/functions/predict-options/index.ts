@@ -155,15 +155,20 @@ Provide a SINGLE, COMPREHENSIVE options trading recommendation with:
 
 10. **Breakeven**: Breakeven price point
 
-11. **IV Rank**: Estimated Implied Volatility Rank (0-100)
+11. **Premium Details**: Estimated option premiums for each leg
+    - For single options: Single premium value
+    - For spreads: Premium for buy leg and sell leg
+    - Include net debit/credit
 
-12. **Greeks** (estimated):
+12. **IV Rank**: Estimated Implied Volatility Rank (0-100)
+
+13. **Greeks** (estimated):
     - Delta: 0.00 to 1.00 (rate of change)
     - Gamma: (delta sensitivity)
     - Theta: (daily time decay)
     - Vega: (volatility sensitivity)
 
-13. **Reasoning**: 150-200 word analysis explaining:
+14. **Reasoning**: 150-200 word analysis explaining:
     - Why this strategy is optimal
     - Volatility environment assessment
     - Technical setup supporting the trade
@@ -179,24 +184,35 @@ Provide a SINGLE, COMPREHENSIVE options trading recommendation with:
 
 **IMPORTANT:**
 - Strike price should be realistic (within ±10% of current price for ATM strategies)
+- Calculate realistic premium based on intrinsic value + time value
+- For ITM options: Premium = (Current Price - Strike) + Time Value (typically 1-2% of strike)
+- For ATM options: Premium ≈ 2-4% of strike price (depending on volatility)
+- For OTM options: Premium = Time Value only (1-3% of strike)
+- For spreads, specify both buy and sell leg premiums
 - Expected return should be achievable (typically 20-100% for debit strategies)
 - Greeks should follow standard options relationships
-- Max loss for long options = premium paid (estimated)
+- Max loss for long options = premium paid
 - Probability should reflect actual market conditions
 - Time frame should match volatility and trend strength
 
 **JSON OUTPUT**:
 {
   "strategy": "<strategy name>",
-  "strikePrice": <number>,
-  "optionType": "CALL" | "PUT",
-  "targetPrice": <number>,
+  "strikePrice": "<string describing all strikes>",
+  "optionType": "CALL" | "PUT" | "Mixed (Call & Put)",
+  "targetPrice": "<string or number>",
   "stopLoss": <number>,
   "expectedReturn": <percentage number>,
   "probability": "<percentage as string>",
   "maxLoss": <number>,
   "maxGain": <number>,
-  "breakeven": <number>,
+  "breakeven": "<string describing breakeven(s)>",
+  "premium": {
+    "buyLeg": <number>,
+    "sellLeg": <number or null>,
+    "netCost": <number>,
+    "description": "<string explaining premium structure>"
+  },
   "ivRank": <0-100>,
   "greeks": {
     "delta": <number>,
