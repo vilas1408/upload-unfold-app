@@ -9,7 +9,7 @@ interface OptionsPrediction {
   optionType: 'CALL' | 'PUT' | 'Mixed (Call & Put)';
   targetPrice: string | number;
   stopLoss: number;
-  expectedReturn: number;
+  expectedReturn: number | string;
   probability: string;
   maxLoss: number;
   maxGain: number;
@@ -31,6 +31,10 @@ interface OptionsPrediction {
   riskLevel: string;
   timeFrame: string;
   technicalScore: number;
+  lotSize?: number;
+  buyInstruction?: string;
+  expiryDate?: string;
+  timestamp?: string;
 }
 
 interface OptionsPredictionDisplayProps {
@@ -143,7 +147,7 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
               <div>
                 <p className="text-sm text-muted-foreground">Expected Return</p>
                 <p className="text-2xl font-bold text-green-500">
-                  +{Number(prediction.expectedReturn).toFixed(2)}%
+                  +{typeof prediction.expectedReturn === 'string' ? prediction.expectedReturn : Number(prediction.expectedReturn).toFixed(2)}%
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -178,6 +182,12 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
                   <span className="text-sm text-muted-foreground">Breakeven:</span>
                   <span className="font-semibold">{typeof prediction.breakeven === 'number' ? `₹${prediction.breakeven.toFixed(2)}` : prediction.breakeven}</span>
                 </div>
+                {prediction.expiryDate && (
+                  <div className="flex justify-between items-center pt-2 border-t border-border">
+                    <span className="text-sm text-muted-foreground">Expiry:</span>
+                    <span className="font-semibold">{new Date(prediction.expiryDate).toLocaleDateString('en-IN')}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -267,8 +277,14 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
         <Card className="p-6 bg-accent/50 mb-8">
           <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
             <TrendingUp className="h-5 w-5 text-primary" />
-            AI Technical Analysis
+            Buy Instruction
           </h3>
+          {prediction.buyInstruction && (
+            <p className="text-lg font-semibold mb-4 text-primary">
+              {prediction.buyInstruction}
+            </p>
+          )}
+          <h4 className="font-semibold mb-2 mt-6">AI Technical Analysis</h4>
           <p className="text-muted-foreground leading-relaxed whitespace-pre-line">
             {prediction.reasoning}
           </p>
