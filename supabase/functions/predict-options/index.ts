@@ -266,8 +266,109 @@ Based on the LIVE data above, provide ONE simple directional options recommendat
   }
 });
 
-// Helper function to fetch real stock data
+// Upstox authentication - Get access token
+async function getUpstoxAccessToken(): Promise<string> {
+  const apiKey = Deno.env.get('UPSTOX_API_KEY');
+  const apiSecret = Deno.env.get('UPSTOX_API_SECRET');
+  
+  if (!apiKey || !apiSecret) {
+    throw new Error('Upstox API credentials not configured');
+  }
+  
+  // Note: Upstox requires OAuth 2.0 flow with user authorization
+  // For now, we'll use the API key directly for server-to-server calls
+  // In production, implement proper OAuth flow
+  return apiKey;
+}
+
+// Helper function to fetch real stock data from Upstox
 async function fetchRealStockData(symbol: string) {
+  console.log(`Attempting to fetch data for: ${symbol}`);
+  
+  try {
+    const accessToken = await getUpstoxAccessToken();
+    
+    // Map symbols to Upstox instrument keys
+    let instrumentKey = '';
+    
+    if (symbol === '^NSEI') {
+      instrumentKey = 'NSE_INDEX|Nifty 50';
+    } else if (symbol === '^NSEBANK') {
+      instrumentKey = 'NSE_INDEX|Nifty Bank';
+    } else if (/^\d+$/.test(symbol)) {
+      // BSE stock (numerical code)
+      instrumentKey = `BSE_EQ|${symbol}`;
+    } else {
+      // NSE stock (alphabetic symbol)
+      const cleanSymbol = symbol.replace('.NS', '').replace('.BO', '');
+      instrumentKey = `NSE_EQ|${cleanSymbol}`;
+    }
+    
+    console.log(`Using Upstox instrument key: ${instrumentKey}`);
+    
+    // Get historical data from Upstox
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 30);
+    
+    // Format dates as YYYY-MM-DD
+    const toDate = endDate.toISOString().split('T')[0];
+    const fromDate = startDate.toISOString().split('T')[0];
+    
+    const url = `https://api.upstox.com/v2/historical-candle/${encodeURIComponent(instrumentKey)}/day/${toDate}/${fromDate}`;
+    
+    console.log(`Upstox API URL: ${url}`);
+    
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      console.error(`Upstox API error: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`Upstox error details: ${errorText}`);
+      // Fallback to Yahoo Finance if Upstox fails
+      console.log('Falling back to Yahoo Finance...');
+      return await fetchYahooFinanceData(symbol);
+    }
+    
+    const data = await response.json();
+    console.log(`Upstox response status: ${data.status}`);
+    
+    if (!data.data?.candles || data.data.candles.length === 0) {
+      console.warn('No candle data from Upstox, falling back to Yahoo Finance');
+      return await fetchYahooFinanceData(symbol);
+    }
+    
+    console.log(`Fetched ${data.data.candles.length} candles from Upstox`);
+    
+    // Upstox candle format: [timestamp, open, high, low, close, volume, oi]
+    const historicalData = data.data.candles.map((candle: any[]) => ({
+      date: new Date(candle[0]).toISOString().split('T')[0],
+      open: candle[1],
+      high: candle[2],
+      low: candle[3],
+      close: candle[4],
+      volume: candle[5]
+    })).reverse(); // Upstox returns newest first, we want oldest first
+    
+    return historicalData;
+    
+  } catch (error) {
+    console.error('Error fetching from Upstox:', error);
+    // Fallback to Yahoo Finance
+    console.log('Falling back to Yahoo Finance due to error...');
+    return await fetchYahooFinanceData(symbol);
+  }
+}
+
+// Fallback function to fetch from Yahoo Finance
+async function fetchYahooFinanceData(symbol: string) {
+  console.log(`Fetching from Yahoo Finance for: ${symbol}`);
+  
   try {
     // Convert symbol to Yahoo Finance format
     let yahooSymbol = symbol;
@@ -287,10 +388,10 @@ async function fetchRealStockData(symbol: string) {
     const endDate = Math.floor(Date.now() / 1000);
     const startDate = endDate - (30 * 24 * 60 * 60);
     
-    // Fetch from Yahoo Finance Chart API (more reliable than download)
+    // Fetch from Yahoo Finance Chart API
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?period1=${startDate}&period2=${endDate}&interval=1d`;
     
-    console.log(`Fetching ${symbol} as ${yahooSymbol} (is numeric: ${/^\d+$/.test(symbol)})`);
+    console.log(`Yahoo Finance URL: ${url}`);
     
     const response = await fetch(url);
     if (!response.ok) {
@@ -301,7 +402,7 @@ async function fetchRealStockData(symbol: string) {
     const result = data.chart.result[0];
     
     if (!result || !result.timestamp) {
-      throw new Error('Invalid stock data received');
+      throw new Error('Invalid stock data received from Yahoo Finance');
     }
     
     const timestamps = result.timestamp;
@@ -319,9 +420,10 @@ async function fetchRealStockData(symbol: string) {
       };
     }).filter((d: any) => d.close > 0); // Filter out invalid entries
 
+    console.log(`Fetched ${historicalData.length} days from Yahoo Finance`);
     return historicalData;
   } catch (error) {
-    console.error('Error fetching stock data:', error);
+    console.error('Error fetching from Yahoo Finance:', error);
     throw error;
   }
 }
