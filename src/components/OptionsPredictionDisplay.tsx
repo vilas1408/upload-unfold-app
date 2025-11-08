@@ -5,8 +5,10 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 
 interface OptionsPrediction {
   strategy: string;
+  actionSignal?: string;
   strikePrice: string | number;
   optionType: 'CALL' | 'PUT' | 'Mixed (Call & Put)';
+  entryPrice?: number;
   targetPrice: string | number;
   stopLoss: number;
   expectedReturn: number;
@@ -84,6 +86,31 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
               </span>
             </Badge>
           </div>
+
+          {/* Direct Action Signal */}
+          {prediction.actionSignal && (
+            <Card className={`p-6 mb-6 ${prediction.optionType === 'CALL' ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className={`text-5xl font-bold ${prediction.optionType === 'CALL' ? 'text-green-500' : 'text-red-500'}`}>
+                    {prediction.actionSignal}
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm text-muted-foreground">For {option.name}</p>
+                    <p className="text-lg font-semibold">Strike: {typeof prediction.strikePrice === 'number' ? `₹${prediction.strikePrice.toFixed(2)}` : prediction.strikePrice}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  {prediction.entryPrice && (
+                    <>
+                      <p className="text-sm text-muted-foreground">Entry (Premium)</p>
+                      <p className="text-2xl font-bold text-primary">₹{Number(prediction.entryPrice).toFixed(2)}</p>
+                    </>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )}
         </div>
 
         <div className="grid md:grid-cols-2 gap-6 mb-8">
@@ -161,20 +188,29 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
         </div>
 
         <Card className="p-6 bg-accent/50 mb-8">
-          <h3 className="text-xl font-semibold mb-4">Price Targets & Greeks</h3>
+          <h3 className="text-xl font-semibold mb-4">Trading Levels & Greeks</h3>
           <div className="grid md:grid-cols-3 gap-6">
             <div>
-              <h4 className="font-semibold mb-3">Price Targets</h4>
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Target Price:</span>
-                  <span className="font-semibold text-green-500">{typeof prediction.targetPrice === 'number' ? `₹${prediction.targetPrice.toFixed(2)}` : prediction.targetPrice}</span>
+              <h4 className="font-semibold mb-3 flex items-center gap-2">
+                <Target className="h-4 w-4 text-primary" />
+                Entry, Target & Stop Loss
+              </h4>
+              <div className="space-y-3">
+                {prediction.entryPrice && (
+                  <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
+                    <span className="text-xs text-muted-foreground block">ENTRY (Premium)</span>
+                    <span className="text-xl font-bold text-primary">₹{Number(prediction.entryPrice).toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+                  <span className="text-xs text-muted-foreground block">TARGET</span>
+                  <span className="text-xl font-bold text-green-500">{typeof prediction.targetPrice === 'number' ? `₹${prediction.targetPrice.toFixed(2)}` : prediction.targetPrice}</span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Stop Loss:</span>
-                  <span className="font-semibold text-red-500">₹{Number(prediction.stopLoss).toFixed(2)}</span>
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                  <span className="text-xs text-muted-foreground block">STOP LOSS</span>
+                  <span className="text-xl font-bold text-red-500">₹{Number(prediction.stopLoss).toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center pt-2 border-t border-border">
                   <span className="text-sm text-muted-foreground">Breakeven:</span>
                   <span className="font-semibold">{typeof prediction.breakeven === 'number' ? `₹${prediction.breakeven.toFixed(2)}` : prediction.breakeven}</span>
                 </div>
