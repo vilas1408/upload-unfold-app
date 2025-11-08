@@ -9,7 +9,7 @@ interface OptionsPrediction {
   optionType: 'CALL' | 'PUT' | 'Mixed (Call & Put)';
   targetPrice: string | number;
   stopLoss: number;
-  expectedReturn: number | string;
+  expectedReturn: number;
   probability: string;
   maxLoss: number;
   maxGain: number;
@@ -31,10 +31,6 @@ interface OptionsPrediction {
   riskLevel: string;
   timeFrame: string;
   technicalScore: number;
-  lotSize?: number;
-  buyInstruction?: string;
-  expiryDate?: string;
-  timestamp?: string;
 }
 
 interface OptionsPredictionDisplayProps {
@@ -147,17 +143,17 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
               <div>
                 <p className="text-sm text-muted-foreground">Expected Return</p>
                 <p className="text-2xl font-bold text-green-500">
-                  +{typeof prediction.expectedReturn === 'string' ? prediction.expectedReturn : Number(prediction.expectedReturn).toFixed(2)}%
+                  +{prediction.expectedReturn.toFixed(2)}%
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Max Gain</p>
-                  <p className="text-lg font-semibold text-green-500">₹{Number(prediction.maxGain).toFixed(2)}</p>
+                  <p className="text-lg font-semibold text-green-500">₹{prediction.maxGain.toFixed(2)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Max Loss</p>
-                  <p className="text-lg font-semibold text-red-500">₹{Number(prediction.maxLoss).toFixed(2)}</p>
+                  <p className="text-lg font-semibold text-red-500">₹{prediction.maxLoss.toFixed(2)}</p>
                 </div>
               </div>
             </div>
@@ -176,18 +172,12 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Stop Loss:</span>
-                  <span className="font-semibold text-red-500">₹{Number(prediction.stopLoss).toFixed(2)}</span>
+                  <span className="font-semibold text-red-500">₹{prediction.stopLoss.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Breakeven:</span>
                   <span className="font-semibold">{typeof prediction.breakeven === 'number' ? `₹${prediction.breakeven.toFixed(2)}` : prediction.breakeven}</span>
                 </div>
-                {prediction.expiryDate && (
-                  <div className="flex justify-between items-center pt-2 border-t border-border">
-                    <span className="text-sm text-muted-foreground">Expiry:</span>
-                    <span className="font-semibold">{new Date(prediction.expiryDate).toLocaleDateString('en-IN')}</span>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -197,17 +187,17 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Buy Leg Premium:</span>
-                    <span className="font-semibold text-blue-500">₹{Number(prediction.premium.buyLeg).toFixed(2)}</span>
+                    <span className="font-semibold text-blue-500">₹{prediction.premium.buyLeg.toFixed(2)}</span>
                   </div>
                   {prediction.premium.sellLeg !== null && (
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-muted-foreground">Sell Leg Premium:</span>
-                      <span className="font-semibold text-green-500">₹{Number(prediction.premium.sellLeg).toFixed(2)}</span>
+                      <span className="font-semibold text-green-500">₹{prediction.premium.sellLeg.toFixed(2)}</span>
                     </div>
                   )}
                   <div className="flex justify-between items-center pt-2 border-t border-border">
                     <span className="text-sm font-semibold">Net Cost:</span>
-                    <span className="font-bold text-primary">₹{Number(prediction.premium.netCost).toFixed(2)}</span>
+                    <span className="font-bold text-primary">₹{prediction.premium.netCost.toFixed(2)}</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">{prediction.premium.description}</p>
                 </div>
@@ -220,21 +210,21 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Delta (Δ):</span>
-                    <span className="font-semibold">{Number(prediction.greeks.delta).toFixed(3)}</span>
+                    <span className="font-semibold">{prediction.greeks.delta.toFixed(3)}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Gamma (Γ):</span>
-                    <span className="font-semibold">{Number(prediction.greeks.gamma).toFixed(3)}</span>
+                    <span className="font-semibold">{prediction.greeks.gamma.toFixed(3)}</span>
                   </div>
                 </div>
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Theta (Θ):</span>
-                    <span className="font-semibold">{Number(prediction.greeks.theta).toFixed(3)}</span>
+                    <span className="font-semibold">{prediction.greeks.theta.toFixed(3)}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Vega (ν):</span>
-                    <span className="font-semibold">{Number(prediction.greeks.vega).toFixed(3)}</span>
+                    <span className="font-semibold">{prediction.greeks.vega.toFixed(3)}</span>
                   </div>
                 </div>
               </div>
@@ -277,14 +267,8 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
         <Card className="p-6 bg-accent/50 mb-8">
           <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
             <TrendingUp className="h-5 w-5 text-primary" />
-            Buy Instruction
+            AI Technical Analysis
           </h3>
-          {prediction.buyInstruction && (
-            <p className="text-lg font-semibold mb-4 text-primary">
-              {prediction.buyInstruction}
-            </p>
-          )}
-          <h4 className="font-semibold mb-2 mt-6">AI Technical Analysis</h4>
           <p className="text-muted-foreground leading-relaxed whitespace-pre-line">
             {prediction.reasoning}
           </p>
