@@ -8,6 +8,7 @@ interface OptionsPrediction {
   actionSignal?: string;
   strikePrice: string | number;
   optionType: 'CALL' | 'PUT' | 'Mixed (Call & Put)';
+  expiryDate?: string;
   entryPrice?: number;
   targetPrice: string | number;
   stopLoss: number;
@@ -90,17 +91,20 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
           {/* Direct Action Signal */}
           {prediction.actionSignal && (
             <Card className={`p-6 mb-6 ${prediction.optionType === 'CALL' ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'}`}>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
-                  <div className={`text-5xl font-bold ${prediction.optionType === 'CALL' ? 'text-green-500' : 'text-red-500'}`}>
+                  <div className={`text-4xl md:text-5xl font-bold ${prediction.optionType === 'CALL' ? 'text-green-500' : 'text-red-500'}`}>
                     {prediction.actionSignal}
                   </div>
                   <div className="text-left">
                     <p className="text-sm text-muted-foreground">For {option.name}</p>
                     <p className="text-lg font-semibold">Strike: {typeof prediction.strikePrice === 'number' ? `₹${prediction.strikePrice.toFixed(2)}` : prediction.strikePrice}</p>
+                    {prediction.expiryDate && (
+                      <p className="text-md font-semibold text-primary mt-1">Expiry: {prediction.expiryDate}</p>
+                    )}
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="text-left md:text-right">
                   {prediction.entryPrice && (
                     <>
                       <p className="text-sm text-muted-foreground">Entry (Premium)</p>
@@ -146,6 +150,12 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
                   <Badge variant="outline">{prediction.technicalScore}/10</Badge>
                 </div>
               </div>
+              {prediction.expiryDate && (
+                <div className="pt-3 border-t border-border">
+                  <p className="text-sm text-muted-foreground">Recommended Expiry</p>
+                  <p className="text-xl font-bold text-primary">{prediction.expiryDate}</p>
+                </div>
+              )}
             </div>
           </Card>
 

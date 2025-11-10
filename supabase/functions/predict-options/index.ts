@@ -127,50 +127,52 @@ Based on the LIVE data above, provide ONE simple directional options recommendat
 
 3. **Option Type**: "CALL" or "PUT"
 
-4. **Entry Price**: The premium price to pay per share (in ₹)
+4. **Expiry Date**: Recommend an expiry date 15-30 days from today (format: "DD-MMM-YYYY" e.g., "28-NOV-2025")
 
-5. **Target Price**: Expected underlying price target (in ₹)
+5. **Entry Price**: The premium price to pay per share (in ₹)
 
-6. **Stop Loss**: Exit underlying price if trade goes wrong (in ₹)
+6. **Target Price**: Expected underlying price target (in ₹)
 
-7. **Expected Return**: 50-100% of premium paid (as percentage number)
+7. **Stop Loss**: Exit underlying price if trade goes wrong (in ₹)
 
-8. **Probability**: Success probability (45-75%)
+8. **Expected Return**: 50-100% of premium paid (as percentage number)
 
-9. **Max Loss**: Premium paid (in ₹)
+9. **Probability**: Success probability (45-75%)
 
-10. **Max Gain**: Potential profit (in ₹)
+10. **Max Loss**: Premium paid (in ₹)
 
-11. **Breakeven**: Strike + Premium (CALL) OR Strike - Premium (PUT)
+11. **Max Gain**: Potential profit (in ₹)
 
-12. **Premium Details**: 
+12. **Breakeven**: Strike + Premium (CALL) OR Strike - Premium (PUT)
+
+13. **Premium Details**:
     - buyLeg: Premium to pay for the option (₹ per share)
     - sellLeg: null (no sell leg in simple strategy)
     - netCost: Same as buyLeg
     - description: Brief explanation of premium
 
-13. **IV Rank**: 0-100 (estimated volatility rank)
+14. **IV Rank**: 0-100 (estimated volatility rank)
 
-14. **Greeks** (estimated):
+15. **Greeks** (estimated):
     - delta: 0.40-0.60 (typical for ATM options)
     - gamma: Small positive number
     - theta: Negative (time decay per day)
     - vega: Positive (volatility sensitivity)
 
-15. **Reasoning**: 150-200 words explaining:
+16. **Reasoning**: 150-200 words explaining:
     - Market direction (bullish/bearish) based on live data
     - Technical indicators supporting the trade
     - Why this strike price and expiry
     - Risk and reward expectations
     - Key price levels to watch
 
-16. **Risk Level**: "Medium" or "High"
+17. **Risk Level**: "Medium" or "High"
 
-17. **Time Frame**: "7-14 days" or "15-30 days"
+18. **Time Frame**: "7-14 days" or "15-30 days"
 
-18. **Technical Score**: 0-10 (quality of setup)
+19. **Technical Score**: 0-10 (quality of setup)
 
-19. **Action Signal**: Clear call to action - "BUY CALL" or "BUY PUT"
+20. **Action Signal**: Clear call to action - "BUY CALL" or "BUY PUT"
 
 **JSON OUTPUT FORMAT**:
 {
@@ -178,6 +180,7 @@ Based on the LIVE data above, provide ONE simple directional options recommendat
   "actionSignal": "BUY CALL" | "BUY PUT",
   "strikePrice": "₹<number>",
   "optionType": "CALL" | "PUT",
+  "expiryDate": "DD-MMM-YYYY",
   "entryPrice": <number>,
   "targetPrice": <number>,
   "stopLoss": <number>,
