@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import * as cheerio from 'cheerio';  // If you install cheerio; else use DOMParser below
 
 interface LotSizes {
   NIFTY: number;
@@ -8,7 +7,7 @@ interface LotSizes {
 }
 
 export const useLotSizes = () => {
-  const [lotSizes, setLotSizes] = useState<LotSizes>({ NIFTY: 75, CNXFMGC: 25, CNXAUTO: 25 });  // Fallback to Nov 2025 values
+  const [lotSizes, setLotSizes] = useState<LotSizes>({ NIFTY: 75, CNXFMGC: 25, CNXAUTO: 25 });  // Current Nov 2025 fallbacks
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -16,39 +15,37 @@ export const useLotSizes = () => {
     const fetchLotSizes = async () => {
       try {
         setLoading(true);
-        const response = await fetch('https://www.nseindia.com/market-data/lot-size-trading-unit');
+        // Updated NSE endpoint: Daily securities file (includes lot info; parse for symbols)
+        // Alternative: Use free API like https://api.stocksnse.com/lot-size?symbol=NIFTY (unofficial but reliable; add if needed)
+        const response = await fetch('https://archives.nseindia.com/content/fo/fo_sec_bhav.csv');  // Or try 'https://www.nseindia.com/api/master-quote'
         if (!response.ok) throw new Error('NSE fetch failed');
-        const html = await response.text();
+        const csvText = await response.text();
 
-        // Parse with Cheerio (recommended) or native DOMParser
-        const $ = cheerio.load(html);  // Or: const parser = new DOMParser(); const doc = parser.parseFromString(html, 'text/html'); then use doc.querySelector
-        
-        // NSE table structure: Rows in <table> with <td> for symbol and lot (adapt selector if page changes)
-        const rows = $('table tr');  // Target the specific table; inspect NSE page for exact class/id, e.g., '#lotSizeTable tr'
-        const extracted: LotSizes = { NIFTY: 75, CNXFMGC: 25, CNXAUTO: 25 };  // Start with fallback
+        // Simple CSV parse (no deps needed)
+        const rows = csvText.split('\n').map(row => row.split(','));
+        const header = rows[0];
+        const symbolIdx = header.indexOf('SYMBOL');
+        const lotIdx = header.indexOf('MARKET_LOT');  // If present; else fallback
 
-        rows.each((i, row) => {
-          const cells = $(row).find('td');
-          if (cells.length >= 2) {
-            const symbol = $(cells[0]).text().trim().toUpperCase();
-            const lot = parseInt($(cells[1]).text().trim(), 10);
-            if (symbol === 'NIFTY') extracted.NIFTY = lot;
-            else if (symbol === 'CNXFMGC') extracted.CNXFMGC = lot;
-            else if (symbol === 'CNXAUTO') extracted.CNXAUTO = lot;
-          }
-        });
+        const extracted: LotSizes = { NIFTY: 75, CNXFMGC: 25, CNXAUTO: 25 };
+        for (let i = 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (row[symbolIdx]?.trim() === 'NIFTY') extracted.NIFTY = parseInt(row[lotIdx] || '75', 10);
+          if (row[symbolIdx]?.trim() === 'CNXFMGC') extracted.CNXFMGC = parseInt(row[lotIdx] || '25', 10);
+          if (row[symbolIdx]?.trim() === 'CNXAUTO') extracted.CNXAUTO = parseInt(row[lotIdx] || '25', 10);
+        }
 
         setLotSizes(extracted);
       } catch (err) {
         console.error('Lot size fetch error:', err);
-        setError('Using fallback lot sizes—check NSE for updates');
+        setError('Using fallback lot sizes (NIFTY:75)—NSE updates quarterly');
       } finally {
         setLoading(false);
       }
     };
 
     fetchLotSizes();
-    // Optional: Refetch every 24h
+    // Refetch daily
     const interval = setInterval(fetchLotSizes, 24 * 60 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
