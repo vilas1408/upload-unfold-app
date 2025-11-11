@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import OptionsTrading from "./pages/OptionsTrading";
 import NotFound from "./pages/NotFound";
+import { BuyCallSpread } from './components/BuyCallSpread';
 
 const queryClient = new QueryClient();
 
