@@ -5,12 +5,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 
 interface OptionsPrediction {
   strategy: string;
-  actionSignal?: string;
   strikePrice: string | number;
-  sellStrike?: string | number;
   optionType: 'CALL' | 'PUT' | 'Mixed (Call & Put)';
-  expiryDate?: string;
-  entryPrice?: number;
   targetPrice: string | number;
   stopLoss: number;
   expectedReturn: number;
@@ -24,8 +20,6 @@ interface OptionsPrediction {
     netCost: number;
     description: string;
   };
-  lotSize?: number;
-  totalInvestment?: number;
   ivRank: number;
   greeks: {
     delta: number;
@@ -90,55 +84,6 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
               </span>
             </Badge>
           </div>
-
-          {/* Direct Action Signal */}
-          {prediction.actionSignal && (
-            <Card className={`p-6 mb-6 ${prediction.optionType === 'CALL' ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'}`}>
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className={`text-3xl md:text-4xl font-bold ${prediction.optionType === 'CALL' ? 'text-green-500' : 'text-red-500'}`}>
-                      {prediction.actionSignal}
-                    </div>
-                    <div className="text-left">
-                      <p className="text-sm text-muted-foreground">For {option.name}</p>
-                      <p className="text-lg font-semibold">Buy Strike: {typeof prediction.strikePrice === 'number' ? `₹${prediction.strikePrice.toFixed(2)}` : prediction.strikePrice}</p>
-                      {prediction.sellStrike && (
-                        <p className="text-lg font-semibold">Sell Strike: {typeof prediction.sellStrike === 'number' ? `₹${prediction.sellStrike.toFixed(2)}` : prediction.sellStrike}</p>
-                      )}
-                      {prediction.expiryDate && (
-                        <p className="text-md font-semibold text-primary mt-1">Expiry: {prediction.expiryDate}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-left md:text-right">
-                    {prediction.entryPrice && (
-                      <>
-                        <p className="text-sm text-muted-foreground">Net Premium/Share</p>
-                        <p className="text-2xl font-bold text-primary">₹{Number(prediction.entryPrice).toFixed(2)}</p>
-                      </>
-                    )}
-                  </div>
-                </div>
-                {prediction.lotSize && prediction.totalInvestment && (
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-4 border-t border-border">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Lot Size</p>
-                      <p className="text-xl font-bold">{prediction.lotSize} shares</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Total Investment</p>
-                      <p className="text-xl font-bold text-primary">₹{Number(prediction.totalInvestment).toFixed(2)}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Max Profit</p>
-                      <p className="text-xl font-bold text-green-500">₹{Number(prediction.maxGain).toFixed(2)}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </Card>
-          )}
         </div>
 
         <div className="grid md:grid-cols-2 gap-6 mb-8">
@@ -156,20 +101,14 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
                 <div>
                   <p className="text-sm text-muted-foreground">Option Type</p>
                   <Badge className={prediction.optionType === 'CALL' ? 'bg-green-500' : 'bg-red-500'}>
-                    {prediction.optionType} SPREAD
+                    {prediction.optionType}
                   </Badge>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Buy Strike</p>
+                  <p className="text-sm text-muted-foreground">Strike Price</p>
                   <p className="text-lg font-semibold">{typeof prediction.strikePrice === 'number' ? `₹${prediction.strikePrice.toFixed(2)}` : prediction.strikePrice}</p>
                 </div>
               </div>
-              {prediction.sellStrike && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Sell Strike</p>
-                  <p className="text-lg font-semibold">{typeof prediction.sellStrike === 'number' ? `₹${prediction.sellStrike.toFixed(2)}` : prediction.sellStrike}</p>
-                </div>
-              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Time Frame</p>
@@ -180,12 +119,6 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
                   <Badge variant="outline">{prediction.technicalScore}/10</Badge>
                 </div>
               </div>
-              {prediction.expiryDate && (
-                <div className="pt-3 border-t border-border">
-                  <p className="text-sm text-muted-foreground">Recommended Expiry</p>
-                  <p className="text-xl font-bold text-primary">{prediction.expiryDate}</p>
-                </div>
-              )}
             </div>
           </Card>
 
@@ -228,29 +161,20 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
         </div>
 
         <Card className="p-6 bg-accent/50 mb-8">
-          <h3 className="text-xl font-semibold mb-4">Trading Levels & Greeks</h3>
+          <h3 className="text-xl font-semibold mb-4">Price Targets & Greeks</h3>
           <div className="grid md:grid-cols-3 gap-6">
             <div>
-              <h4 className="font-semibold mb-3 flex items-center gap-2">
-                <Target className="h-4 w-4 text-primary" />
-                Entry, Target & Stop Loss
-              </h4>
-              <div className="space-y-3">
-                {prediction.entryPrice && (
-                  <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
-                    <span className="text-xs text-muted-foreground block">ENTRY (Premium)</span>
-                    <span className="text-xl font-bold text-primary">₹{Number(prediction.entryPrice).toFixed(2)}</span>
-                  </div>
-                )}
-                <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20">
-                  <span className="text-xs text-muted-foreground block">TARGET</span>
-                  <span className="text-xl font-bold text-green-500">{typeof prediction.targetPrice === 'number' ? `₹${prediction.targetPrice.toFixed(2)}` : prediction.targetPrice}</span>
+              <h4 className="font-semibold mb-3">Price Targets</h4>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Target Price:</span>
+                  <span className="font-semibold text-green-500">{typeof prediction.targetPrice === 'number' ? `₹${prediction.targetPrice.toFixed(2)}` : prediction.targetPrice}</span>
                 </div>
-                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-                  <span className="text-xs text-muted-foreground block">STOP LOSS</span>
-                  <span className="text-xl font-bold text-red-500">₹{Number(prediction.stopLoss).toFixed(2)}</span>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Stop Loss:</span>
+                  <span className="font-semibold text-red-500">₹{Number(prediction.stopLoss).toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between items-center pt-2 border-t border-border">
+                <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Breakeven:</span>
                   <span className="font-semibold">{typeof prediction.breakeven === 'number' ? `₹${prediction.breakeven.toFixed(2)}` : prediction.breakeven}</span>
                 </div>
@@ -259,7 +183,7 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
 
             {prediction.premium && (
               <div>
-                <h4 className="font-semibold mb-3">Premium Details (Per Share)</h4>
+                <h4 className="font-semibold mb-3">Premium Details</h4>
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Buy Leg Premium:</span>
@@ -272,21 +196,9 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
                     </div>
                   )}
                   <div className="flex justify-between items-center pt-2 border-t border-border">
-                    <span className="text-sm font-semibold">Net Cost/Share:</span>
+                    <span className="text-sm font-semibold">Net Cost:</span>
                     <span className="font-bold text-primary">₹{Number(prediction.premium.netCost).toFixed(2)}</span>
                   </div>
-                  {prediction.lotSize && (
-                    <>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Lot Size:</span>
-                        <span className="font-semibold">{prediction.lotSize} shares</span>
-                      </div>
-                      <div className="flex justify-between items-center pt-2 border-t border-border">
-                        <span className="text-sm font-semibold">Total Investment:</span>
-                        <span className="font-bold text-primary">₹{Number(prediction.totalInvestment).toFixed(2)}</span>
-                      </div>
-                    </>
-                  )}
                   <p className="text-xs text-muted-foreground mt-2">{prediction.premium.description}</p>
                 </div>
               </div>
