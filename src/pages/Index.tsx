@@ -25,6 +25,11 @@ const Index = () => {
         body: { symbol, companyName: name }
       });
 
+      // Check if data contains an error message (from 402/429 responses)
+      if (data && !data.success && data.error) {
+        throw new Error(data.error);
+      }
+
       if (error) throw error;
 
       if (data.success) {
