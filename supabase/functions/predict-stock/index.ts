@@ -29,7 +29,12 @@ serve(async (req) => {
     
     console.log('Predicting stock for:', symbol, companyName);
 
-    // Initialize Supabase client
+    // Get Lovable API key and initialize Supabase client
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    if (!LOVABLE_API_KEY) {
+      throw new Error('LOVABLE_API_KEY is not configured');
+    }
+    
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
