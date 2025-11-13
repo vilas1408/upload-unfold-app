@@ -1,10 +1,48 @@
-import { TrendingUp } from "lucide-react";
+import { TrendingUp, LogOut } from "lucide-react";
 import { Button } from "./ui/button";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import type { User } from "@supabase/supabase-js";
 
 const Navbar = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { toast } = useToast();
   const isHomePage = location.pathname === '/';
+  const [user, setUser] = useState<User | null>(null);
+  
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      toast({
+        title: "Logout failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Logged out",
+        description: "You've been successfully logged out.",
+      });
+      navigate("/auth");
+    }
+  };
   
   return (
     <nav className="fixed top-0 w-full z-50 glass-strong border-b border-border">
@@ -36,20 +74,24 @@ const Navbar = () => {
           )}
         </div>
 
-        <Button 
-          className="gradient-primary"
-          onClick={() => {
-            if (isHomePage) {
-              document.getElementById('dashboard')?.scrollIntoView({ 
-                behavior: 'smooth' 
-              });
-            } else {
-              window.location.href = '/#dashboard';
-            }
-          }}
-        >
-          Get Started
-        </Button>
+        <div className="flex items-center gap-2">
+          {user ? (
+            <Button 
+              variant="outline"
+              onClick={handleLogout}
+              className="flex items-center gap-2"
+            >
+              <LogOut className="h-4 w-4" />
+              Logout
+            </Button>
+          ) : (
+            <Button 
+              onClick={() => navigate("/auth")}
+            >
+              Login
+            </Button>
+          )}
+        </div>
       </div>
     </nav>
   );

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import Navbar from "@/components/Navbar";
@@ -7,6 +8,7 @@ import OptionsSelector from "@/components/OptionsSelector";
 import OptionsPredictionDisplay from "@/components/OptionsPredictionDisplay";
 
 const OptionsTrading = () => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [selectedOption, setSelectedOption] = useState<{
     symbol: string;
@@ -16,6 +18,24 @@ const OptionsTrading = () => {
   const [prediction, setPrediction] = useState<any | null>(null);
   const [historicalData, setHistoricalData] = useState<any[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    // Check if user is logged in
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        navigate("/auth");
+      }
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!session) {
+        navigate("/auth");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
 
   const handleSelectOption = async (symbol: string, name: string, type: 'share' | 'index') => {
     setSelectedOption({ symbol, name, type });
