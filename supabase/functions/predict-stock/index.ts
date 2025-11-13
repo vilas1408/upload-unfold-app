@@ -73,11 +73,6 @@ serve(async (req) => {
 
     console.log('No cache found, generating new prediction');
 
-    const GOOGLE_GEMINI_API_KEY = Deno.env.get('GOOGLE_GEMINI_API_KEY');
-    if (!GOOGLE_GEMINI_API_KEY) {
-      throw new Error('GOOGLE_GEMINI_API_KEY is not configured');
-    }
-
     // Fetch real historical data from Yahoo Finance (30 days for better analysis)
     const historicalData = await fetchRealStockData(symbol);
     
@@ -284,55 +279,32 @@ Provide a SINGLE, COMPREHENSIVE prediction for **TOMORROW (next trading day)** w
   "riskFactors": "<3-5 specific risk factors, comma-separated>"
 }`;
 
-    // Prepare request for Google Gemini API
-    const geminiPayload = {
-      contents: [{
-        parts: [{
-          text: `${systemPrompt}\n\n${userPrompt}`
-        }]
-      }],
-      generationConfig: {
+    // Use Lovable AI (no API key required)
+    const { data: aiResponseData, error: aiError } = await supabase.functions.invoke('lovable-ai', {
+      body: {
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt
+          },
+          {
+            role: 'user',
+            content: userPrompt
+          }
+        ],
         temperature: 0.1,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 8192,
+        max_tokens: 8192
       }
-    };
+    });
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GOOGLE_GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(geminiPayload),
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Google Gemini API error:', response.status, errorText);
-      throw new Error(`Google Gemini API error: ${response.status} - ${errorText}`);
+    if (aiError) {
+      console.error('Lovable AI error:', aiError);
+      throw new Error(`Lovable AI error: ${aiError.message}`);
     }
 
-    let aiResponse;
-    try {
-      const responseText = await response.text();
-      console.log('Raw Gemini Response:', responseText.substring(0, 500)); // Log first 500 chars
-      aiResponse = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('Failed to parse Gemini response:', parseError);
-      throw new Error('Invalid response from Google Gemini API. Please try again.');
-    }
-
-    if (!aiResponse.candidates?.[0]?.content?.parts?.[0]?.text) {
-      console.error('Unexpected Gemini response structure:', aiResponse);
-      throw new Error('Invalid Gemini response structure');
-    }
-
-    const content = aiResponse.candidates[0].content.parts[0].text;
-    console.log('Gemini AI Response:', content);
+    const content = aiResponseData.choices[0].message.content;
+    console.log('Lovable AI Response:', content);
 
     // Extract JSON object from response (single prediction)
     const jsonMatch = content.match(/\{[\s\S]*\}/);

@@ -20,10 +20,10 @@ serve(async (req) => {
     
     console.log('Predicting options for:', symbol, name, type);
 
-    const GOOGLE_GEMINI_API_KEY = Deno.env.get('GOOGLE_GEMINI_API_KEY');
-    if (!GOOGLE_GEMINI_API_KEY) {
-      throw new Error('GOOGLE_GEMINI_API_KEY is not configured');
-    }
+    // Initialize Supabase client for Lovable AI
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Fetch historical data
     const historicalData = await fetchRealStockData(symbol);
@@ -214,39 +214,31 @@ Based on the LIVE data above, provide ONE simple directional options recommendat
   "technicalScore": <0-100>
 }`;
 
-    const geminiPayload = {
-      contents: [{
-        parts: [{
-          text: `${systemPrompt}\n\n${userPrompt}`
-        }]
-      }],
-      generationConfig: {
+    // Use Lovable AI (no API key required)
+    const { data: aiResponse, error: aiError } = await supabase.functions.invoke('lovable-ai', {
+      body: {
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt
+          },
+          {
+            role: 'user',
+            content: userPrompt
+          }
+        ],
         temperature: 0.2,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 8192,
+        max_tokens: 8192
       }
-    };
+    });
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GOOGLE_GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(geminiPayload),
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Google Gemini API error:', response.status, errorText);
-      throw new Error(`Google Gemini API error: ${response.status}`);
+    if (aiError) {
+      console.error('Lovable AI error:', aiError);
+      throw new Error(`Lovable AI error: ${aiError.message}`);
     }
 
-    const aiResponse = await response.json();
-    const content = aiResponse.candidates[0].content.parts[0].text;
+    const content = aiResponse.choices[0].message.content;
     console.log('Options AI Response:', content);
 
     const jsonMatch = content.match(/\{[\s\S]*\}/);
