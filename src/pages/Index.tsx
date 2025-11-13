@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import Navbar from "@/components/Navbar";
@@ -8,12 +9,31 @@ import PredictionDisplay from "@/components/PredictionDisplay";
 import Footer from "@/components/Footer";
 
 const Index = () => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [selectedStock, setSelectedStock] = useState<{ symbol: string; name: string } | null>(null);
   const [prediction, setPrediction] = useState<any | null>(null);
   const [historicalData, setHistoricalData] = useState<any[] | null>(null);
   const [isCached, setIsCached] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    // Check if user is logged in
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        navigate("/auth");
+      }
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!session) {
+        navigate("/auth");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
 
   const handleSelectStock = async (symbol: string, name: string) => {
     setSelectedStock({ symbol, name });
