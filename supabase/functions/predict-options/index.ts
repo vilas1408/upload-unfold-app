@@ -110,25 +110,23 @@ Provide JSON:
     });
 
     if (!aiResponse.ok) {
-      if (aiResponse.status === 402) {
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: 'Out of AI credits. Please add credits to your workspace in Settings → Workspace → Usage to continue using AI predictions.' 
-          }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+      const errorData = await aiResponse.json();
+      console.error('Google Gemini API error:', aiResponse.status, errorData);
+      
+      let errorMessage = 'Failed to generate prediction. Please try again.';
+      
       if (aiResponse.status === 429) {
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: 'Rate limit exceeded. Please wait a moment and try again.' 
-          }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        errorMessage = 'Google API rate limit reached. Please wait a moment and try again.';
+      } else if (aiResponse.status === 400) {
+        errorMessage = 'Invalid request to AI service.';
+      } else if (errorData.error?.message) {
+        errorMessage = errorData.error.message;
       }
-      throw new Error(`AI error: ${aiResponse.status}`);
+      
+      return new Response(
+        JSON.stringify({ success: false, error: errorMessage }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const aiData = await aiResponse.json();
