@@ -177,7 +177,7 @@ Next Day Prediction: Start at 50% (coin flip) and ADD points for:
 
 === 📈 HISTORICAL PRICE DATA (Last 30 Days) ===
 ${historicalData.map((d: any) => 
-  `${d.date}: Open ₹${d.open.toFixed(2)}, High ₹${d.high.toFixed(2)}, Low ₹${d.low.toFixed(2)}, Close ₹${d.close.toFixed(2)}, Vol: ${d.volume.toLocaleString()}`
+  `${d.date}: Open ₹${d.open?.toFixed(2) || 'N/A'}, High ₹${d.high?.toFixed(2) || 'N/A'}, Low ₹${d.low?.toFixed(2) || 'N/A'}, Close ₹${d.close?.toFixed(2) || 'N/A'}, Vol: ${d.volume?.toLocaleString() || 'N/A'}`
 ).join('\n')}
 
 === 📊 COMPREHENSIVE TECHNICAL ANALYSIS ===
