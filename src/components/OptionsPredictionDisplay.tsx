@@ -7,6 +7,8 @@ interface OptionsPrediction {
   strategy: string;
   strikePrice: string | number;
   optionType: 'CALL' | 'PUT' | 'Mixed (Call & Put)';
+  expiryDate?: string;
+  lotSize?: number;
   targetPrice: string | number;
   stopLoss: number;
   expectedReturn: number;
@@ -14,6 +16,12 @@ interface OptionsPrediction {
   maxLoss: number;
   maxGain: number;
   breakeven: string | number;
+  totalInvestment?: number;
+  profitLoss?: {
+    target: number;
+    stopLoss: number;
+    breakeven: number;
+  };
   premium?: {
     buyLeg: number;
     sellLeg: number | null;
@@ -104,11 +112,32 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
                     {prediction.optionType}
                   </Badge>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Strike Price</p>
-                  <p className="text-lg font-semibold">{typeof prediction.strikePrice === 'number' ? `₹${prediction.strikePrice.toFixed(2)}` : prediction.strikePrice}</p>
-                </div>
+                {prediction.expiryDate && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Expiry Date</p>
+                    <p className="text-lg font-semibold">{prediction.expiryDate}</p>
+                  </div>
+                )}
               </div>
+              {prediction.lotSize && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Lot Size</p>
+                  <p className="text-lg font-semibold">{prediction.lotSize} units</p>
+                </div>
+              )}
+              <div>
+                <p className="text-sm text-muted-foreground">Strike Price</p>
+                <p className="text-lg font-semibold">{typeof prediction.strikePrice === 'number' ? `₹${prediction.strikePrice.toFixed(2)}` : prediction.strikePrice}</p>
+              </div>
+              {prediction.totalInvestment && (
+                <div className="mt-4 p-4 bg-primary/10 rounded-lg">
+                  <p className="text-sm text-muted-foreground">Total Investment Required</p>
+                  <p className="text-2xl font-bold text-primary">₹{prediction.totalInvestment.toLocaleString('en-IN')}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Premium ₹{prediction.premium?.netCost || 0} × {prediction.lotSize} lots
+                  </p>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Time Frame</p>
@@ -125,9 +154,62 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
           <Card className="p-6 bg-accent/50">
             <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
               <Shield className="h-5 w-5 text-primary" />
-              Risk & Reward Profile
+              Profit & Loss Analysis
             </h3>
             <div className="space-y-4">
+              {prediction.profitLoss ? (
+                <>
+                  <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                    <p className="text-sm text-muted-foreground mb-1">Target Profit</p>
+                    <p className="text-2xl font-bold text-green-500">
+                      +₹{prediction.profitLoss.target.toLocaleString('en-IN')}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      At target price ₹{typeof prediction.targetPrice === 'number' ? prediction.targetPrice.toFixed(2) : prediction.targetPrice}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+                    <p className="text-sm text-muted-foreground mb-1">Stop Loss</p>
+                    <p className="text-2xl font-bold text-red-500">
+                      ₹{prediction.profitLoss.stopLoss.toLocaleString('en-IN')}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      At stop loss ₹{prediction.stopLoss.toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                    <p className="text-sm text-muted-foreground mb-1">Breakeven Point</p>
+                    <p className="text-xl font-bold text-yellow-500">
+                      ₹{prediction.profitLoss.breakeven.toFixed(2)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Expected Return</p>
+                    <p className="text-2xl font-bold text-green-500">
+                      +{Number(prediction.expectedReturn).toFixed(2)}%
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Expected Return</p>
+                    <p className="text-2xl font-bold text-green-500">
+                      +{Number(prediction.expectedReturn).toFixed(2)}%
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Max Gain</p>
+                      <p className="text-lg font-semibold text-green-500">₹{Number(prediction.maxGain).toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Max Loss</p>
+                      <p className="text-lg font-semibold text-red-500">₹{Number(prediction.maxLoss).toFixed(2)}</p>
+                    </div>
+                  </div>
+                </>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Risk Level</p>
@@ -138,22 +220,6 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
                 <div>
                   <p className="text-sm text-muted-foreground">IV Rank</p>
                   <p className="text-lg font-semibold">{prediction.ivRank}%</p>
-                </div>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Expected Return</p>
-                <p className="text-2xl font-bold text-green-500">
-                  +{Number(prediction.expectedReturn).toFixed(2)}%
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Max Gain</p>
-                  <p className="text-lg font-semibold text-green-500">₹{Number(prediction.maxGain).toFixed(2)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Max Loss</p>
-                  <p className="text-lg font-semibold text-red-500">₹{Number(prediction.maxLoss).toFixed(2)}</p>
                 </div>
               </div>
             </div>
