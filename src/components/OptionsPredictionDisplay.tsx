@@ -11,6 +11,9 @@ interface OptionsPrediction {
   lotSize?: number;
   targetPrice: string | number;
   stopLoss: number;
+  entryPrice?: number;
+  targetExitPrice?: number;
+  stopLossPrice?: number;
   expectedReturn: number;
   probability: string;
   maxLoss: number;
@@ -138,12 +141,34 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
                 <p className="text-sm text-muted-foreground">Strike Price</p>
                 <p className="text-lg font-semibold">{typeof prediction.strikePrice === 'number' ? `₹${prediction.strikePrice.toFixed(2)}` : prediction.strikePrice}</p>
               </div>
+              
+              <div className="space-y-2 mt-4">
+                <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
+                  <div className="text-xs text-muted-foreground mb-1">Entry Price</div>
+                  <div className="text-lg font-bold text-primary">
+                    ₹{(prediction.entryPrice || (typeof prediction.strikePrice === 'number' ? prediction.strikePrice : parseFloat(prediction.strikePrice as string))).toFixed(2)}
+                  </div>
+                </div>
+                <div className="p-3 bg-green-500/10 rounded-lg border border-green-500/20">
+                  <div className="text-xs text-muted-foreground mb-1">Target Exit Price</div>
+                  <div className="text-lg font-bold text-green-500">
+                    ₹{(prediction.targetExitPrice || (typeof prediction.targetPrice === 'number' ? prediction.targetPrice : parseFloat(prediction.targetPrice as string))).toFixed(2)}
+                  </div>
+                </div>
+                <div className="p-3 bg-red-500/10 rounded-lg border border-red-500/20">
+                  <div className="text-xs text-muted-foreground mb-1">Stop Loss Price</div>
+                  <div className="text-lg font-bold text-red-500">
+                    ₹{(prediction.stopLossPrice || prediction.stopLoss).toFixed(2)}
+                  </div>
+                </div>
+              </div>
+              
               {prediction.totalInvestment && (
-                <div className="mt-4 p-4 bg-primary/10 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Total Investment Required</p>
+                <div className="mt-4 p-4 bg-background/50 rounded-lg border border-border">
+                  <p className="text-sm text-muted-foreground mb-2">Total Investment Required</p>
                   <p className="text-2xl font-bold text-primary">₹{prediction.totalInvestment.toLocaleString('en-IN')}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Premium ₹{prediction.premium?.netCost || 0} × {prediction.lotSize} lots
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Premium ₹{prediction.premium?.buyLeg || 0} per lot × {prediction.lotSize} lots
                   </p>
                 </div>
               )}
@@ -261,18 +286,16 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
                 <h4 className="font-semibold mb-3">Premium Details</h4>
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Buy Leg Premium:</span>
-                    <span className="font-semibold text-blue-500">₹{Number(prediction.premium.buyLeg).toFixed(2)}</span>
+                    <span className="text-sm text-muted-foreground">Premium per Lot:</span>
+                    <span className="font-semibold text-primary">₹{Number(prediction.premium.buyLeg).toFixed(2)}</span>
                   </div>
-                  {prediction.premium.sellLeg !== null && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Sell Leg Premium:</span>
-                      <span className="font-semibold text-green-500">₹{Number(prediction.premium.sellLeg).toFixed(2)}</span>
-                    </div>
-                  )}
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Number of Lots:</span>
+                    <span className="font-semibold">{prediction.lotSize || 1}</span>
+                  </div>
                   <div className="flex justify-between items-center pt-2 border-t border-border">
-                    <span className="text-sm font-semibold">Net Cost:</span>
-                    <span className="font-bold text-primary">₹{Number(prediction.premium.netCost).toFixed(2)}</span>
+                    <span className="text-sm font-semibold">Total Premium:</span>
+                    <span className="font-bold text-primary">₹{(Number(prediction.premium.buyLeg) * (prediction.lotSize || 1)).toLocaleString('en-IN')}</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">{prediction.premium.description}</p>
                 </div>

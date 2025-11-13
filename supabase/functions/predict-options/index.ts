@@ -76,11 +76,21 @@ serve(async (req) => {
       }
     }
     
-    // Get current week Thursday expiry
+    // Get current week Thursday expiry (weekly options)
     const today = new Date();
-    const daysUntilThursday = (4 - today.getDay() + 7) % 7;
+    const currentDay = today.getDay(); // 0 = Sunday, 4 = Thursday
+    let daysUntilThursday;
+    
+    if (currentDay <= 4) {
+      // If today is Sun-Thu, get this Thursday
+      daysUntilThursday = 4 - currentDay;
+    } else {
+      // If today is Fri-Sat, get next Thursday
+      daysUntilThursday = 7 - currentDay + 4;
+    }
+    
     const thursday = new Date(today);
-    thursday.setDate(today.getDate() + (daysUntilThursday === 0 ? 7 : daysUntilThursday));
+    thursday.setDate(today.getDate() + daysUntilThursday);
     const expiryDate = thursday.toLocaleDateString('en-GB', { 
       day: '2-digit', 
       month: 'short', 
@@ -94,51 +104,53 @@ serve(async (req) => {
     else if (symbol === 'FINNIFTY') lotSize = 40;
     else if (symbol === 'MIDCPNIFTY') lotSize = 50;
 
-    const systemPrompt = `You are an options trading expert. Provide SIMPLE INTRADAY options strategies.
+    const systemPrompt = `You are an options trading expert. Provide SIMPLE INTRADAY options strategies with EXACT PRICE LEVELS.
     
 RULES:
 - BULLISH: Recommend BUY CALL only
 - BEARISH: Recommend BUY PUT only
-- Premium: ₹50-150 range
+- Premium per lot: ₹50-150 range
 - Expiry: ${expiryDate}
-- Lot Size: ${lotSize}`;
+- Lot Size: ${lotSize}
+- Provide SPECIFIC entry, target, and stop loss prices`;
 
-    const userPrompt = `Analyze ${name} (${symbol}). Current: ₹${analysis.current}, RSI: ${analysis.rsi}, Trend: ${analysis.trend}
+    const userPrompt = `Analyze ${name} (${symbol}). Current Price: ₹${analysis.current}, RSI: ${analysis.rsi}, Trend: ${analysis.trend}
 
 News Sentiment Analysis:
 Overall Sentiment: ${newsSentiment.overall}
 Summary: ${newsSentiment.summary}
 Articles: ${JSON.stringify(newsSentiment.articles)}
 
-Consider the news sentiment in your analysis and provide JSON:
+Provide realistic options strategy with EXACT PRICES:
 {
   "strategy": "Long Call" | "Long Put",
-  "strikePrice": <number>,
+  "strikePrice": <realistic strike near current price>,
   "optionType": "CALL" | "PUT",
   "expiryDate": "${expiryDate}",
   "lotSize": ${lotSize},
   "premium": {
-    "buyLeg": <50-150>,
+    "buyLeg": <50-150 per lot>,
     "sellLeg": null,
-    "netCost": <50-150>,
-    "description": "Premium for entry"
+    "netCost": <same as buyLeg>,
+    "description": "Premium per lot for entry"
   },
-  "totalInvestment": <premium × lotSize>,
+  "totalInvestment": <buyLeg × lotSize>,
+  "entryPrice": <strikePrice for entry>,
+  "targetExitPrice": <realistic target price for profit>,
+  "stopLossPrice": <realistic stop loss price>,
   "profitLoss": {
-    "target": <number>,
-    "stopLoss": <negative number>,
+    "target": <profit amount in rupees>,
+    "stopLoss": <loss amount as negative>,
     "breakeven": <strike ± premium>
   },
-  "targetPrice": <number>,
-  "stopLoss": <number>,
-  "expectedReturn": <30-50>,
-  "probability": "<percentage>%",
+  "expectedReturn": <30-50 percentage>,
+  "probability": "<40-70>%",
   "maxLoss": <totalInvestment>,
-  "maxGain": <realistic>,
+  "maxGain": <realistic gain in rupees>,
   "breakeven": <strike ± premium>,
   "ivRank": <0-100>,
-  "greeks": {"delta": <0.4-0.6>, "gamma": <small>, "theta": <negative>, "vega": <positive>},
-  "reasoning": "Brief analysis including news sentiment impact",
+  "greeks": {"delta": <0.4-0.6>, "gamma": <0.01-0.05>, "theta": <-10 to -50>, "vega": <50-150>},
+  "reasoning": "Brief analysis (2-3 lines) including news sentiment impact",
   "riskLevel": "Low|Medium|High",
   "timeFrame": "Intraday (Exit before 3:15 PM)",
   "technicalScore": <0-100>,
