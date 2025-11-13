@@ -20,10 +20,11 @@ serve(async (req) => {
     
     console.log('Predicting options for:', symbol, name, type);
 
-    // Initialize Supabase client for Lovable AI
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // Get Lovable API key
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    if (!LOVABLE_API_KEY) {
+      throw new Error('LOVABLE_API_KEY is not configured');
+    }
 
     // Fetch historical data
     const historicalData = await fetchRealStockData(symbol);
