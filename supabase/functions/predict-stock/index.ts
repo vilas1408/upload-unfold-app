@@ -28,7 +28,55 @@ serve(async (req) => {
     const historicalData = await fetchStockData(symbol);
     const analysis = analyzeData(historicalData);
 
-    const systemPrompt = `You are a stock market analyst. Provide accurate stock predictions based on technical analysis.`;
+    // Fetch news sentiment using Lovable AI
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    let newsSentiment = { overall: 'neutral', summary: 'No recent news available', articles: [] };
+    
+    if (LOVABLE_API_KEY) {
+      try {
+        const newsResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'google/gemini-2.5-flash',
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a financial news analyst. Search for and analyze recent news about the given stock. Return ONLY valid JSON.'
+              },
+              {
+                role: 'user',
+                content: `Search for recent news (last 3 days) about ${companyName} (${symbol}) stock. Analyze the sentiment and return JSON:
+{
+  "overall": "positive" | "negative" | "neutral",
+  "summary": "brief summary of news sentiment",
+  "articles": [{"title": "string", "sentiment": "positive/negative/neutral", "impact": "high/medium/low"}]
+}`
+              }
+            ],
+            temperature: 0.3,
+          }),
+        });
+
+        if (newsResponse.ok) {
+          const newsData = await newsResponse.json();
+          const content = newsData.choices?.[0]?.message?.content;
+          if (content) {
+            const jsonMatch = content.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              newsSentiment = JSON.parse(jsonMatch[0]);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('News sentiment error:', error);
+      }
+    }
+
+    const systemPrompt = `You are a stock market analyst. Provide accurate stock predictions based on technical analysis and news sentiment.`;
 
     const userPrompt = `Analyze ${companyName} (${symbol}).
     
@@ -37,18 +85,28 @@ RSI: ${analysis.rsi}
 SMA20: ₹${analysis.sma20}
 Trend: ${analysis.trend}
 
-Provide JSON prediction:
+News Sentiment Analysis:
+Overall Sentiment: ${newsSentiment.overall}
+Summary: ${newsSentiment.summary}
+Articles: ${JSON.stringify(newsSentiment.articles)}
+
+Provide JSON prediction (including news sentiment impact in your analysis):
 {
   "predictedPrice": <number>,
   "targetPrice": <number>,
   "stopLoss": <number>,
   "direction": "up|down|sideways",
   "confidence": "<percentage>%",
-  "reason": "<analysis>",
+  "reason": "<analysis including news sentiment impact>",
   "predictionDate": "<tomorrow YYYY-MM-DD>",
   "technicalScore": <0-6>,
   "trendAlignment": "bullish|bearish|neutral",
-  "riskFactors": "<factors>"
+  "riskFactors": "<factors>",
+  "newsSentiment": {
+    "overall": "${newsSentiment.overall}",
+    "summary": "${newsSentiment.summary}",
+    "articles": ${JSON.stringify(newsSentiment.articles)}
+  }
 }`;
 
     const aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GOOGLE_GEMINI_API_KEY}`, {
