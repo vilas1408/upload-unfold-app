@@ -39,6 +39,15 @@ interface OptionsPrediction {
   riskLevel: string;
   timeFrame: string;
   technicalScore: number;
+  newsSentiment?: {
+    overall: string;
+    summary: string;
+    articles: Array<{
+      title: string;
+      sentiment: string;
+      impact: string;
+    }>;
+  };
 }
 
 interface OptionsPredictionDisplayProps {
@@ -329,6 +338,56 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
             </LineChart>
           </ResponsiveContainer>
         </Card>
+
+        {prediction.newsSentiment && (
+          <Card className="p-6 bg-accent/50 mb-8">
+            <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-primary" />
+              News Sentiment Analysis
+            </h3>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-muted-foreground">Overall Sentiment:</span>
+                <Badge className={
+                  prediction.newsSentiment.overall === 'positive' 
+                    ? 'bg-green-500/10 text-green-500 border-green-500/20' 
+                    : prediction.newsSentiment.overall === 'negative'
+                    ? 'bg-red-500/10 text-red-500 border-red-500/20'
+                    : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
+                }>
+                  {prediction.newsSentiment.overall.toUpperCase()}
+                </Badge>
+              </div>
+              <p className="text-muted-foreground">{prediction.newsSentiment.summary}</p>
+              {prediction.newsSentiment.articles && prediction.newsSentiment.articles.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="font-semibold text-sm">Recent News Articles:</h4>
+                  {prediction.newsSentiment.articles.map((article, idx) => (
+                    <div key={idx} className="p-3 bg-background/50 rounded-lg border border-border/50">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium">{article.title}</p>
+                        <div className="flex gap-2 flex-shrink-0">
+                          <Badge variant="outline" className={
+                            article.sentiment === 'positive' 
+                              ? 'text-green-500' 
+                              : article.sentiment === 'negative'
+                              ? 'text-red-500'
+                              : 'text-yellow-500'
+                          }>
+                            {article.sentiment}
+                          </Badge>
+                          <Badge variant="outline" className="text-xs">
+                            {article.impact} impact
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
 
         <Card className="p-6 bg-accent/50 mb-8">
           <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
