@@ -215,9 +215,14 @@ Based on the LIVE data above, provide ONE simple directional options recommendat
   "technicalScore": <0-100>
 }`;
 
-    // Use Lovable AI (no API key required)
-    const { data: aiResponse, error: aiError } = await supabase.functions.invoke('lovable-ai', {
-      body: {
+    // Call Lovable AI Gateway directly
+    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [
           {
@@ -231,15 +236,17 @@ Based on the LIVE data above, provide ONE simple directional options recommendat
         ],
         temperature: 0.2,
         max_tokens: 8192
-      }
+      })
     });
 
-    if (aiError) {
-      console.error('Lovable AI error:', aiError);
-      throw new Error(`Lovable AI error: ${aiError.message}`);
+    if (!aiResponse.ok) {
+      const errorText = await aiResponse.text();
+      console.error('Lovable AI error:', errorText);
+      throw new Error(`Lovable AI error: ${aiResponse.status} ${errorText}`);
     }
 
-    const content = aiResponse.choices[0].message.content;
+    const aiData = await aiResponse.json();
+    const content = aiData.choices[0].message.content;
     console.log('Options AI Response:', content);
 
     const jsonMatch = content.match(/\{[\s\S]*\}/);

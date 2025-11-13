@@ -284,31 +284,32 @@ Provide a SINGLE, COMPREHENSIVE prediction for **TOMORROW (next trading day)** w
   "riskFactors": "<3-5 specific risk factors, comma-separated>"
 }`;
 
-    // Use Lovable AI (no API key required)
-    const { data: aiResponseData, error: aiError } = await supabase.functions.invoke('lovable-ai', {
-      body: {
+    // Call Lovable AI Gateway directly
+    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [
-          {
-            role: 'system',
-            content: systemPrompt
-          },
-          {
-            role: 'user',
-            content: userPrompt
-          }
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
         ],
         temperature: 0.1,
         max_tokens: 8192
-      }
+      })
     });
 
-    if (aiError) {
-      console.error('Lovable AI error:', aiError);
-      throw new Error(`Lovable AI error: ${aiError.message}`);
+    if (!aiResponse.ok) {
+      const errorText = await aiResponse.text();
+      console.error('Lovable AI error:', errorText);
+      throw new Error(`Lovable AI error: ${aiResponse.status} ${errorText}`);
     }
 
-    const content = aiResponseData.choices[0].message.content;
+    const aiData = await aiResponse.json();
+    const content = aiData.choices[0].message.content;
     console.log('Lovable AI Response:', content);
 
     // Extract JSON object from response (single prediction)
