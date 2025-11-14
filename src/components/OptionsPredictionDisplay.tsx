@@ -51,6 +51,13 @@ interface OptionsPrediction {
       impact: string;
     }>;
   };
+  liveData?: {
+    spotPrice: number;
+    openInterest: number;
+    volume: number;
+    bidPrice: number;
+    askPrice: number;
+  };
 }
 
 interface OptionsPredictionDisplayProps {
@@ -147,12 +154,39 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
               {/* Premium Information */}
               {prediction.premium && (
                 <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
-                  <h4 className="text-sm font-semibold mb-3 text-primary">Premium Details</h4>
+                  <h4 className="text-sm font-semibold mb-3 text-primary flex items-center gap-2">
+                    Premium Details
+                    {prediction.liveData && (
+                      <Badge className="bg-green-500 text-white">LIVE</Badge>
+                    )}
+                  </h4>
                   <div className="grid grid-cols-1 gap-2">
                     <div className="flex justify-between items-center py-2 border-b border-border/50">
-                      <span className="text-xs text-muted-foreground">Entry Premium</span>
-                      <span className="font-bold">₹{prediction.premium.buyLeg}/lot</span>
+                      <span className="text-xs text-muted-foreground">
+                        {prediction.liveData ? 'Current LTP' : 'Entry Premium'}
+                      </span>
+                      <span className="font-bold text-lg">₹{prediction.premium.buyLeg}/lot</span>
                     </div>
+                    {prediction.liveData && (
+                      <>
+                        <div className="flex justify-between items-center py-2 border-b border-border/50">
+                          <span className="text-xs text-muted-foreground">Bid Price</span>
+                          <span className="font-semibold">₹{prediction.liveData.bidPrice.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-2 border-b border-border/50">
+                          <span className="text-xs text-muted-foreground">Ask Price</span>
+                          <span className="font-semibold">₹{prediction.liveData.askPrice.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-2 border-b border-border/50">
+                          <span className="text-xs text-muted-foreground">Open Interest</span>
+                          <span className="font-semibold">{prediction.liveData.openInterest.toLocaleString('en-IN')}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-2 border-b border-border/50">
+                          <span className="text-xs text-muted-foreground">Volume</span>
+                          <span className="font-semibold">{prediction.liveData.volume.toLocaleString('en-IN')}</span>
+                        </div>
+                      </>
+                    )}
                     <div className="flex justify-between items-center py-2 border-b border-border/50">
                       <span className="text-xs text-muted-foreground">Target Premium</span>
                       <span className="font-bold text-green-500">₹{Math.round(prediction.premium.buyLeg * 2)}/lot (+100%)</span>
