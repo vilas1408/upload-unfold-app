@@ -6,6 +6,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import OptionsSelector from "@/components/OptionsSelector";
 import OptionsPredictionDisplay from "@/components/OptionsPredictionDisplay";
+import { UpstoxAuth } from "@/components/UpstoxAuth";
 
 const OptionsTrading = () => {
   const navigate = useNavigate();
@@ -18,6 +19,7 @@ const OptionsTrading = () => {
   const [prediction, setPrediction] = useState<any | null>(null);
   const [historicalData, setHistoricalData] = useState<any[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLiveData, setIsLiveData] = useState(false);
 
   useEffect(() => {
     // Check if user is logged in
@@ -43,8 +45,10 @@ const OptionsTrading = () => {
     setPrediction(null);
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
       const { data, error } = await supabase.functions.invoke('predict-options', {
-        body: { symbol, name, type }
+        body: { symbol, name, type, userId: user?.id }
       });
 
       // Check if data contains an error message (from 402/429 responses)
@@ -57,10 +61,11 @@ const OptionsTrading = () => {
       if (data.success) {
         setPrediction(data.prediction);
         setHistoricalData(data.historicalData);
+        setIsLiveData(data.isLiveData || false);
         
         toast({
           title: "Options Prediction Generated",
-          description: `Options analysis for ${name} is ready!`,
+          description: `${data.isLiveData ? '🔴 LIVE DATA:' : 'AI Estimate:'} Options analysis for ${name} is ready!`,
         });
 
         setTimeout(() => {
@@ -97,6 +102,8 @@ const OptionsTrading = () => {
           </p>
         </div>
         
+        <UpstoxAuth />
+        
         <OptionsSelector onSelectOption={handleSelectOption} />
         
         {isLoading && (
@@ -109,11 +116,20 @@ const OptionsTrading = () => {
         )}
         
         {selectedOption && prediction && historicalData && (
-          <OptionsPredictionDisplay 
-            option={selectedOption} 
-            prediction={prediction}
-            historicalData={historicalData}
-          />
+          <>
+            {isLiveData && (
+              <div className="text-center mb-4 p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
+                <p className="text-green-400 font-semibold">
+                  🔴 LIVE DATA: Showing real-time premiums and Greeks from Upstox
+                </p>
+              </div>
+            )}
+            <OptionsPredictionDisplay 
+              option={selectedOption} 
+              prediction={prediction}
+              historicalData={historicalData}
+            />
+          </>
         )}
       </div>
       <Footer />
