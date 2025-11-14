@@ -12,18 +12,13 @@ serve(async (req) => {
   }
 
   try {
-    const { symbol, name, type, userId } = await req.json();
+    const { symbol, name, type } = await req.json();
     
     if (!symbol || !name || !type) {
       throw new Error('Symbol, name, and type are required');
     }
     
     console.log('Predicting options for:', symbol, name, type);
-
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Fetch historical data
     const historicalData = await fetchStockData(symbol);
@@ -119,25 +114,20 @@ serve(async (req) => {
 
     // Try to fetch live option chain data from Upstox
     let liveOptionData = null;
-    if (userId && upstoxSymbol) {
+    if (upstoxSymbol) {
       try {
-        console.log('Fetching Upstox token for user:', userId);
-        const { data: tokenData } = await supabase
-          .from('upstox_tokens')
-          .select('access_token, token_expiry')
-          .eq('user_id', userId)
-          .single();
-
-        if (tokenData && new Date(tokenData.token_expiry) > new Date()) {
+        const UPSTOX_ACCESS_TOKEN = Deno.env.get('UPSTOX_ACCESS_TOKEN');
+        
+        if (UPSTOX_ACCESS_TOKEN) {
           console.log('Fetching live option chain from Upstox...');
           liveOptionData = await fetchUpstoxOptionChain(
-            tokenData.access_token,
+            UPSTOX_ACCESS_TOKEN,
             upstoxSymbol,
             expiryDateISO
           );
           console.log('Live option data fetched:', liveOptionData ? 'Success' : 'Failed');
         } else {
-          console.log('No valid Upstox token found');
+          console.log('No Upstox access token configured');
         }
       } catch (error) {
         console.error('Error fetching Upstox data:', error);

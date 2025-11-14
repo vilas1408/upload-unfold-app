@@ -6,7 +6,6 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import OptionsSelector from "@/components/OptionsSelector";
 import OptionsPredictionDisplay from "@/components/OptionsPredictionDisplay";
-import { UpstoxAuth } from "@/components/UpstoxAuth";
 
 const OptionsTrading = () => {
   const navigate = useNavigate();
@@ -45,10 +44,8 @@ const OptionsTrading = () => {
     setPrediction(null);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
       const { data, error } = await supabase.functions.invoke('predict-options', {
-        body: { symbol, name, type, userId: user?.id }
+        body: { symbol, name, type }
       });
 
       // Check if data contains an error message (from 402/429 responses)
@@ -98,11 +95,9 @@ const OptionsTrading = () => {
             Options Trading Predictions
           </h1>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            Advanced AI-powered options trading predictions for shares and indexes with comprehensive technical analysis
+            Get live option chain data with real premiums, Greeks, and market depth
           </p>
         </div>
-        
-        <UpstoxAuth />
         
         <OptionsSelector onSelectOption={handleSelectOption} />
         
