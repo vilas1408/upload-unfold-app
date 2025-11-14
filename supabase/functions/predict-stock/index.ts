@@ -164,6 +164,19 @@ Provide JSON prediction (including news sentiment impact in your analysis):
 
     const prediction = JSON.parse(jsonMatch[0]);
 
+    // Calculate next trading day (skip weekends)
+    const today = new Date();
+    let nextDay = new Date(today);
+    nextDay.setDate(nextDay.getDate() + 1);
+    
+    // Skip Saturday (6) and Sunday (0)
+    while (nextDay.getDay() === 0 || nextDay.getDay() === 6) {
+      nextDay.setDate(nextDay.getDate() + 1);
+    }
+    
+    // Override AI's predictionDate with correct next trading day
+    prediction.predictionDate = nextDay.toISOString().split('T')[0];
+
     return new Response(
       JSON.stringify({ success: true, prediction, historicalData }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
