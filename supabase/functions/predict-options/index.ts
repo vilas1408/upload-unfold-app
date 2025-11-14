@@ -97,9 +97,9 @@ serve(async (req) => {
       year: 'numeric' 
     }).toUpperCase();
 
-    // Determine lot size
+    // Determine lot size (as per NSE specifications)
     let lotSize = 500;
-    if (symbol === 'NIFTY' || symbol === '^NSEI') lotSize = 25;
+    if (symbol === 'NIFTY' || symbol === '^NSEI') lotSize = 75;
     else if (symbol === 'BANKNIFTY' || symbol === '^NSEBANK') lotSize = 15;
     else if (symbol === 'FINNIFTY') lotSize = 40;
     else if (symbol === 'MIDCPNIFTY') lotSize = 50;
