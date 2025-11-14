@@ -10,7 +10,7 @@ interface OptionsPrediction {
   expiryDate?: string;
   lotSize?: number;
   targetPrice: string | number;
-  stopLoss: number;
+  stopLoss?: number;
   entryPrice?: number;
   targetExitPrice?: number;
   stopLossPrice?: number;
@@ -158,7 +158,7 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
                 <div className="p-3 bg-red-500/10 rounded-lg border border-red-500/20">
                   <div className="text-xs text-muted-foreground mb-1">Stop Loss Price</div>
                   <div className="text-lg font-bold text-red-500">
-                    ₹{(prediction.stopLossPrice || prediction.stopLoss).toFixed(2)}
+                    ₹{(prediction.stopLossPrice || prediction.stopLoss || 0).toFixed(2)}
                   </div>
                 </div>
               </div>
