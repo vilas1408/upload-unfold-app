@@ -6,6 +6,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 interface PredictionData {
   openingPrice: number;
   closingPrice: number;
+  predictedPrice?: number;
+  targetPrice?: number;
   reason: string;
   confidence: string;
   predictionDate: string;
@@ -56,6 +58,11 @@ const PredictionDisplay = ({ stock, prediction, historicalData, isCached }: Pred
 
   // Combine historical data with predicted price for chart
   // Show last 7 days historical + tomorrow's prediction = 8 days total
+  const openPrice = prediction.openingPrice || prediction.predictedPrice || 0;
+  const closePrice = prediction.closingPrice || prediction.targetPrice || 0;
+  const priceChange = closePrice - openPrice;
+  const priceChangePercent = openPrice ? ((priceChange / openPrice) * 100).toFixed(2) : '0.00';
+
   const last7Days = historicalData.slice(-7);
   const chartData = [
     ...last7Days.map((d: any) => ({
@@ -65,13 +72,10 @@ const PredictionDisplay = ({ stock, prediction, historicalData, isCached }: Pred
     })),
     {
       date: new Date(prediction.predictionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      price: prediction.closingPrice,
+      price: closePrice,
       type: 'Predicted'
     }
   ];
-
-  const priceChange = prediction.closingPrice - prediction.openingPrice;
-  const priceChangePercent = ((priceChange / prediction.openingPrice) * 100).toFixed(2);
 
   return (
     <section id="prediction" className="py-20 px-4 bg-gradient-to-b from-background to-primary/5">
@@ -157,7 +161,7 @@ const PredictionDisplay = ({ stock, prediction, historicalData, isCached }: Pred
                   <ArrowUpCircle className="h-4 w-4 text-primary" />
                   <p className="text-sm text-muted-foreground">Opening Price</p>
                 </div>
-                <p className="text-2xl font-bold">₹{prediction.openingPrice.toFixed(2)}</p>
+                <p className="text-2xl font-bold">₹{openPrice.toFixed(2)}</p>
                 <p className="text-xs text-muted-foreground mt-1">Market open estimate</p>
               </div>
               
@@ -166,7 +170,7 @@ const PredictionDisplay = ({ stock, prediction, historicalData, isCached }: Pred
                   <ArrowDownCircle className="h-4 w-4 text-primary" />
                   <p className="text-sm text-muted-foreground">Closing Price</p>
                 </div>
-                <p className="text-2xl font-bold">₹{prediction.closingPrice.toFixed(2)}</p>
+                <p className="text-2xl font-bold">₹{closePrice.toFixed(2)}</p>
                 <p className="text-xs text-muted-foreground mt-1">End of day target</p>
               </div>
               
