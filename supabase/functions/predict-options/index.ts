@@ -76,31 +76,31 @@ serve(async (req) => {
       }
     }
     
-    // Get current week Thursday expiry (weekly options)
+    // Get current week Tuesday expiry (weekly options - changed from Thursday as per NSE circular effective Aug 28, 2025)
     const today = new Date();
-    const currentDay = today.getDay(); // 0 = Sunday, 4 = Thursday
-    let daysUntilThursday;
+    const currentDay = today.getDay(); // 0 = Sunday, 2 = Tuesday
+    let daysUntilTuesday;
     
-    if (currentDay <= 4) {
-      // If today is Sun-Thu, get this Thursday
-      daysUntilThursday = 4 - currentDay;
+    if (currentDay <= 2) {
+      // If today is Sun-Tue, get this Tuesday
+      daysUntilTuesday = 2 - currentDay;
     } else {
-      // If today is Fri-Sat, get next Thursday
-      daysUntilThursday = 7 - currentDay + 4;
+      // If today is Wed-Sat, get next Tuesday
+      daysUntilTuesday = 7 - currentDay + 2;
     }
     
-    const thursday = new Date(today);
-    thursday.setDate(today.getDate() + daysUntilThursday);
-    const expiryDate = thursday.toLocaleDateString('en-GB', { 
+    const tuesday = new Date(today);
+    tuesday.setDate(today.getDate() + daysUntilTuesday);
+    const expiryDate = tuesday.toLocaleDateString('en-GB', { 
       day: '2-digit', 
       month: 'short', 
       year: 'numeric' 
     }).toUpperCase();
 
-    // Determine lot size (as per NSE specifications)
+    // Determine lot size (as per NSE Circular FAOP/64625 & SEBI guidelines - effective Oct 28, 2025)
     let lotSize = 500;
-    if (symbol === 'NIFTY' || symbol === '^NSEI') lotSize = 75;
-    else if (symbol === 'BANKNIFTY' || symbol === '^NSEBANK') lotSize = 15;
+    if (symbol === 'NIFTY' || symbol === '^NSEI') lotSize = 65; // Changed from 75 to 65
+    else if (symbol === 'BANKNIFTY' || symbol === '^NSEBANK') lotSize = 30; // Changed from 15 to 30
     else if (symbol === 'FINNIFTY') lotSize = 40;
     else if (symbol === 'MIDCPNIFTY') lotSize = 50;
 

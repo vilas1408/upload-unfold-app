@@ -117,30 +117,63 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
                 <p className="text-sm text-muted-foreground">Strategy Type</p>
                 <p className="text-2xl font-bold text-primary">{prediction.strategy}</p>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              
+              {/* Prominent Option Details */}
+              <div className="grid grid-cols-2 gap-3 p-4 bg-background/50 rounded-lg border border-border">
                 <div>
-                  <p className="text-sm text-muted-foreground">Option Type</p>
-                  <Badge className={prediction.optionType === 'CALL' ? 'bg-green-500' : 'bg-red-500'}>
+                  <p className="text-xs text-muted-foreground mb-1">Option</p>
+                  <Badge className={prediction.optionType === 'CALL' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}>
                     {prediction.optionType}
                   </Badge>
                 </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Strike</p>
+                  <p className="text-lg font-bold">₹{typeof prediction.strikePrice === 'number' ? prediction.strikePrice.toLocaleString('en-IN') : prediction.strikePrice}</p>
+                </div>
                 {prediction.expiryDate && (
                   <div>
-                    <p className="text-sm text-muted-foreground">Expiry Date</p>
-                    <p className="text-lg font-semibold">{prediction.expiryDate}</p>
+                    <p className="text-xs text-muted-foreground mb-1">Expiry</p>
+                    <p className="text-sm font-semibold">{prediction.expiryDate}</p>
+                  </div>
+                )}
+                {prediction.lotSize && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Lot Size</p>
+                    <p className="text-sm font-semibold">{prediction.lotSize} units</p>
                   </div>
                 )}
               </div>
-              {prediction.lotSize && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Lot Size</p>
-                  <p className="text-lg font-semibold">{prediction.lotSize} units</p>
+              
+              {/* Premium Information */}
+              {prediction.premium && (
+                <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
+                  <h4 className="text-sm font-semibold mb-3 text-primary">Premium Details</h4>
+                  <div className="grid grid-cols-1 gap-2">
+                    <div className="flex justify-between items-center py-2 border-b border-border/50">
+                      <span className="text-xs text-muted-foreground">Entry Premium</span>
+                      <span className="font-bold">₹{prediction.premium.buyLeg}/lot</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b border-border/50">
+                      <span className="text-xs text-muted-foreground">Target Premium</span>
+                      <span className="font-bold text-green-500">₹{Math.round(prediction.premium.buyLeg * 2)}/lot (+100%)</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2">
+                      <span className="text-xs text-muted-foreground">Stop Loss Premium</span>
+                      <span className="font-bold text-red-500">₹{Math.round(prediction.premium.buyLeg * 0.67)}/lot (-33%)</span>
+                    </div>
+                  </div>
                 </div>
               )}
-              <div>
-                <p className="text-sm text-muted-foreground">Strike Price</p>
-                <p className="text-lg font-semibold">{typeof prediction.strikePrice === 'number' ? `₹${prediction.strikePrice.toFixed(2)}` : prediction.strikePrice}</p>
-              </div>
+              
+              {prediction.totalInvestment && (
+                <div className="p-4 bg-background/50 rounded-lg border border-border">
+                  <p className="text-xs text-muted-foreground mb-1">Total Investment</p>
+                  <p className="text-3xl font-bold text-primary">₹{prediction.totalInvestment.toLocaleString('en-IN')}</p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    ₹{prediction.premium?.buyLeg || 0} × {prediction.lotSize} units
+                  </p>
+                </div>
+              )}
               
               <div className="space-y-2 mt-4">
                 <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
