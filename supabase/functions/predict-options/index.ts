@@ -95,20 +95,20 @@ serve(async (req) => {
     
     const expiryDateISO = tuesday.toISOString().split('T')[0]; // YYYY-MM-DD format for Upstox
 
-    // Determine lot size (as per NSE Circular FAOP/64625 & SEBI guidelines - effective Oct 28, 2025)
+    // Determine lot size (as per NSE Circular - updated Nov 2025)
     let lotSize = 500;
     let upstoxSymbol = '';
     if (symbol === 'NIFTY' || symbol === '^NSEI') {
-      lotSize = 65; // Changed from 75 to 65
+      lotSize = 75;
       upstoxSymbol = 'NSE_INDEX|Nifty 50';
     } else if (symbol === 'BANKNIFTY' || symbol === '^NSEBANK') {
-      lotSize = 30; // Changed from 15 to 30
+      lotSize = 35;
       upstoxSymbol = 'NSE_INDEX|Nifty Bank';
     } else if (symbol === 'FINNIFTY') {
       lotSize = 40;
       upstoxSymbol = 'NSE_INDEX|Nifty Fin Service';
     } else if (symbol === 'MIDCPNIFTY') {
-      lotSize = 50;
+      lotSize = 140;
       upstoxSymbol = 'NSE_INDEX|NIFTY MID SELECT';
     }
 
