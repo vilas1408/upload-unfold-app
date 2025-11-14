@@ -92,9 +92,11 @@ Articles: ${JSON.stringify(newsSentiment.articles)}
 
 Provide JSON prediction (including news sentiment impact in your analysis):
 {
-  "predictedPrice": <number>,
-  "targetPrice": <number>,
-  "stopLoss": <number>,
+  "openingPrice": <predicted opening price for next trading day>,
+  "closingPrice": <predicted closing price for next trading day>,
+  "predictedPrice": <average price target>,
+  "targetPrice": <upside target>,
+  "stopLoss": <risk level price>,
   "direction": "up|down|sideways",
   "confidence": "<percentage>%",
   "reason": "<analysis including news sentiment impact>",
