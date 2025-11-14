@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { symbol, name, type } = await req.json();
+    const { symbol, name, type, userId } = await req.json();
     
     if (!symbol || !name || !type) {
       throw new Error('Symbol, name, and type are required');
@@ -19,10 +20,10 @@ serve(async (req) => {
     
     console.log('Predicting options for:', symbol, name, type);
 
-    const GOOGLE_GEMINI_API_KEY = Deno.env.get('GOOGLE_GEMINI_API_KEY');
-    if (!GOOGLE_GEMINI_API_KEY) {
-      throw new Error('GOOGLE_GEMINI_API_KEY is not configured');
-    }
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Fetch historical data
     const historicalData = await fetchStockData(symbol);
@@ -96,14 +97,78 @@ serve(async (req) => {
       month: 'short', 
       year: 'numeric' 
     }).toUpperCase();
+    
+    const expiryDateISO = tuesday.toISOString().split('T')[0]; // YYYY-MM-DD format for Upstox
 
     // Determine lot size (as per NSE Circular FAOP/64625 & SEBI guidelines - effective Oct 28, 2025)
     let lotSize = 500;
-    if (symbol === 'NIFTY' || symbol === '^NSEI') lotSize = 65; // Changed from 75 to 65
-    else if (symbol === 'BANKNIFTY' || symbol === '^NSEBANK') lotSize = 30; // Changed from 15 to 30
-    else if (symbol === 'FINNIFTY') lotSize = 40;
-    else if (symbol === 'MIDCPNIFTY') lotSize = 50;
+    let upstoxSymbol = '';
+    if (symbol === 'NIFTY' || symbol === '^NSEI') {
+      lotSize = 65; // Changed from 75 to 65
+      upstoxSymbol = 'NSE_INDEX|Nifty 50';
+    } else if (symbol === 'BANKNIFTY' || symbol === '^NSEBANK') {
+      lotSize = 30; // Changed from 15 to 30
+      upstoxSymbol = 'NSE_INDEX|Nifty Bank';
+    } else if (symbol === 'FINNIFTY') {
+      lotSize = 40;
+      upstoxSymbol = 'NSE_INDEX|Nifty Fin Service';
+    } else if (symbol === 'MIDCPNIFTY') {
+      lotSize = 50;
+      upstoxSymbol = 'NSE_INDEX|NIFTY MID SELECT';
+    }
 
+    // Try to fetch live option chain data from Upstox
+    let liveOptionData = null;
+    if (userId && upstoxSymbol) {
+      try {
+        console.log('Fetching Upstox token for user:', userId);
+        const { data: tokenData } = await supabase
+          .from('upstox_tokens')
+          .select('access_token, token_expiry')
+          .eq('user_id', userId)
+          .single();
+
+        if (tokenData && new Date(tokenData.token_expiry) > new Date()) {
+          console.log('Fetching live option chain from Upstox...');
+          liveOptionData = await fetchUpstoxOptionChain(
+            tokenData.access_token,
+            upstoxSymbol,
+            expiryDateISO
+          );
+          console.log('Live option data fetched:', liveOptionData ? 'Success' : 'Failed');
+        } else {
+          console.log('No valid Upstox token found');
+        }
+      } catch (error) {
+        console.error('Error fetching Upstox data:', error);
+      }
+    }
+
+    // If we have live data, use it directly
+    if (liveOptionData) {
+      console.log('Using live Upstox data for prediction');
+      const prediction = buildPredictionFromLiveData(
+        liveOptionData,
+        analysis,
+        newsSentiment,
+        expiryDate,
+        lotSize
+      );
+      
+      return new Response(
+        JSON.stringify({ success: true, prediction, historicalData, isLiveData: true }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Fallback to AI prediction if no live data
+    console.log('Using AI prediction (no live data available)');
+    
+    const GOOGLE_GEMINI_API_KEY = Deno.env.get('GOOGLE_GEMINI_API_KEY');
+    if (!GOOGLE_GEMINI_API_KEY) {
+      throw new Error('GOOGLE_GEMINI_API_KEY is not configured');
+    }
+    
     const systemPrompt = `You are an options trading expert. Provide SIMPLE INTRADAY options strategies with EXACT PRICE LEVELS.
     
 RULES:
@@ -215,7 +280,7 @@ Provide realistic options strategy with EXACT PRICES:
     const prediction = JSON.parse(jsonMatch[0]);
 
     return new Response(
-      JSON.stringify({ success: true, prediction, historicalData }),
+      JSON.stringify({ success: true, prediction, historicalData, isLiveData: false }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error: any) {
@@ -226,6 +291,133 @@ Provide realistic options strategy with EXACT PRICES:
     );
   }
 });
+
+async function fetchUpstoxOptionChain(accessToken: string, instrumentKey: string, expiryDate: string) {
+  try {
+    const url = `https://api.upstox.com/v2/option/chain?instrument_key=${encodeURIComponent(instrumentKey)}&expiry_date=${expiryDate}`;
+    console.log('Upstox API URL:', url);
+    
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      console.error('Upstox API error:', response.status, await response.text());
+      return null;
+    }
+
+    const data = await response.json();
+    console.log('Upstox response received, data points:', data.data?.length || 0);
+    return data;
+  } catch (error) {
+    console.error('Error fetching Upstox option chain:', error);
+    return null;
+  }
+}
+
+function buildPredictionFromLiveData(
+  upstoxData: any,
+  analysis: any,
+  newsSentiment: any,
+  expiryDate: string,
+  lotSize: number
+) {
+  const spotPrice = analysis.current;
+  const trend = analysis.trend;
+  
+  // Find ATM or nearest strike
+  const optionChain = upstoxData.data || [];
+  let selectedOption = null;
+  let minDiff = Infinity;
+  
+  for (const strike of optionChain) {
+    const diff = Math.abs(strike.strike_price - spotPrice);
+    if (diff < minDiff) {
+      minDiff = diff;
+      selectedOption = strike;
+    }
+  }
+  
+  if (!selectedOption) {
+    throw new Error('No suitable option found in chain');
+  }
+  
+  // Choose CALL for bullish, PUT for bearish
+  const isBullish = trend === 'Bullish';
+  const optionData = isBullish ? selectedOption.call_options : selectedOption.put_options;
+  const optionType = isBullish ? 'CALL' : 'PUT';
+  const strategy = isBullish ? 'Long Call' : 'Long Put';
+  
+  const premium = optionData.market_data.ltp;
+  const strikePrice = selectedOption.strike_price;
+  const greeks = optionData.option_greeks;
+  
+  // Calculate targets and stops
+  const targetPremium = premium * 2; // 100% target
+  const stopLossPremium = premium * 0.67; // 33% stop loss
+  
+  const totalInvestment = premium * lotSize;
+  const targetProfit = (targetPremium - premium) * lotSize;
+  const stopLoss = (stopLossPremium - premium) * lotSize;
+  
+  const breakeven = isBullish 
+    ? strikePrice + premium 
+    : strikePrice - premium;
+
+  return {
+    strategy,
+    strikePrice,
+    optionType,
+    expiryDate,
+    lotSize,
+    premium: {
+      buyLeg: Math.round(premium),
+      sellLeg: null,
+      netCost: Math.round(premium),
+      description: "Live market premium per lot"
+    },
+    totalInvestment: Math.round(totalInvestment),
+    entryPrice: strikePrice,
+    targetExitPrice: Math.round(targetPremium),
+    stopLossPrice: Math.round(stopLossPremium),
+    profitLoss: {
+      target: Math.round(targetProfit),
+      stopLoss: Math.round(stopLoss),
+      breakeven: Math.round(breakeven)
+    },
+    expectedReturn: 100,
+    probability: `${Math.round(greeks.pop || 50)}%`,
+    maxLoss: Math.round(totalInvestment),
+    maxGain: Math.round(targetProfit),
+    breakeven: Math.round(breakeven),
+    ivRank: Math.round((greeks.iv / 3) || 30), // Rough IV rank estimation
+    greeks: {
+      delta: Number(greeks.delta.toFixed(4)),
+      gamma: Number(greeks.gamma.toFixed(4)),
+      theta: Number(greeks.theta.toFixed(2)),
+      vega: Number(greeks.vega.toFixed(2))
+    },
+    reasoning: `${strategy} based on ${trend.toLowerCase()} trend (RSI: ${analysis.rsi}). Live market data shows ${optionType} premium at ₹${Math.round(premium)} with IV ${Math.round(greeks.iv)}%. News sentiment: ${newsSentiment.overall}.`,
+    riskLevel: premium > 100 ? "Medium" : "Low",
+    timeFrame: "Intraday (Exit before 3:15 PM)",
+    technicalScore: analysis.rsi > 60 ? 75 : analysis.rsi < 40 ? 70 : 65,
+    newsSentiment: {
+      overall: newsSentiment.overall,
+      summary: newsSentiment.summary,
+      articles: newsSentiment.articles
+    },
+    liveData: {
+      spotPrice: selectedOption.underlying_spot_price,
+      openInterest: optionData.market_data.oi,
+      volume: optionData.market_data.volume,
+      bidPrice: optionData.market_data.bid_price,
+      askPrice: optionData.market_data.ask_price
+    }
+  };
+}
 
 async function fetchStockData(symbol: string) {
   try {

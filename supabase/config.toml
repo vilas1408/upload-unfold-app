@@ -72,3 +72,6 @@ verify_jwt = false
 
 [functions.predict-options]
 verify_jwt = false
+
+[functions.upstox-auth]
+verify_jwt = false
