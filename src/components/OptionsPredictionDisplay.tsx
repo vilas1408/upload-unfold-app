@@ -205,10 +205,10 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
                   <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
                     <p className="text-sm text-muted-foreground mb-1">Stop Loss</p>
                     <p className="text-2xl font-bold text-red-500">
-                      ₹{prediction.profitLoss.stopLoss.toLocaleString('en-IN')}
+                      ₹{(prediction.profitLoss.stopLoss || 0).toLocaleString('en-IN')}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      At stop loss ₹{prediction.stopLoss.toFixed(2)}
+                      At stop loss ₹{(prediction.stopLoss || prediction.stopLossPrice || 0).toFixed(2)}
                     </p>
                   </div>
                   <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
@@ -272,7 +272,7 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Stop Loss:</span>
-                  <span className="font-semibold text-red-500">₹{Number(prediction.stopLoss).toFixed(2)}</span>
+                  <span className="font-semibold text-red-500">₹{(Number(prediction.stopLoss) || Number(prediction.stopLossPrice) || 0).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Breakeven:</span>
