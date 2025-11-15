@@ -137,7 +137,7 @@ Overall Sentiment: ${newsSentiment.overall}
 Summary: ${newsSentiment.summary}
 Articles: ${JSON.stringify(newsSentiment.articles)}
 
-Provide realistic options strategy with EXACT PRICES:
+Provide realistic options strategy with EXACT PRICES and REALISTIC PREMIUM TARGETS:
 {
   "strategy": "Long Call" | "Long Put",
   "strikePrice": <realistic strike near current price>,
@@ -148,6 +148,8 @@ Provide realistic options strategy with EXACT PRICES:
     "buyLeg": <50-150 per lot>,
     "sellLeg": null,
     "netCost": <same as buyLeg>,
+    "targetPremium": <realistic target premium - 20-50% gain for intraday>,
+    "stopLossPremium": <realistic stop loss premium - 25-40% loss>,
     "description": "Premium per lot for entry"
   },
   "totalInvestment": <buyLeg × lotSize>,

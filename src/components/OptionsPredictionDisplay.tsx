@@ -29,6 +29,8 @@ interface OptionsPrediction {
     buyLeg: number;
     sellLeg: number | null;
     netCost: number;
+    targetPremium?: number;
+    stopLossPremium?: number;
     description: string;
   };
   ivRank: number;
@@ -189,11 +191,21 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
                     )}
                     <div className="flex justify-between items-center py-2 border-b border-border/50">
                       <span className="text-xs text-muted-foreground">Target Premium</span>
-                      <span className="font-bold text-green-500">₹{Math.round(prediction.premium.buyLeg * 2)}/lot (+100%)</span>
+                      <span className="font-bold text-green-500">
+                        ₹{Math.round(prediction.premium.targetPremium || prediction.premium.buyLeg * 1.4)}/lot 
+                        ({prediction.premium.targetPremium 
+                          ? `+${Math.round(((prediction.premium.targetPremium - prediction.premium.buyLeg) / prediction.premium.buyLeg) * 100)}%`
+                          : '+40%'})
+                      </span>
                     </div>
                     <div className="flex justify-between items-center py-2">
                       <span className="text-xs text-muted-foreground">Stop Loss Premium</span>
-                      <span className="font-bold text-red-500">₹{Math.round(prediction.premium.buyLeg * 0.67)}/lot (-33%)</span>
+                      <span className="font-bold text-red-500">
+                        ₹{Math.round(prediction.premium.stopLossPremium || prediction.premium.buyLeg * 0.7)}/lot 
+                        ({prediction.premium.stopLossPremium 
+                          ? `${Math.round(((prediction.premium.stopLossPremium - prediction.premium.buyLeg) / prediction.premium.buyLeg) * 100)}%`
+                          : '-30%'})
+                      </span>
                     </div>
                   </div>
                 </div>
