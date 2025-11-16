@@ -120,15 +120,25 @@ serve(async (req) => {
       throw new Error('GOOGLE_GEMINI_API_KEY is not configured');
     }
     
+    // Calculate expected premium range based on stock price
+    const expectedPremiumMin = Math.round(analysis.current * 0.02); // 2% of stock price
+    const expectedPremiumMax = Math.round(analysis.current * 0.05); // 5% of stock price
+    const expectedPremiumMid = Math.round(analysis.current * 0.035); // 3.5% typical ATM premium
+    
     const systemPrompt = `You are an options trading expert. Provide SIMPLE INTRADAY options strategies with EXACT PRICE LEVELS.
     
 RULES:
 - BULLISH: Recommend BUY CALL only
 - BEARISH: Recommend BUY PUT only
-- Premium per lot: ₹50-150 range
+- Stock Price: ₹${analysis.current}
+- Premium must be realistic: ₹${expectedPremiumMin}-${expectedPremiumMax} per lot (2-5% of stock price)
+- For ATM options: Around ₹${expectedPremiumMid} per lot
+- For OTM options: Slightly lower (₹${expectedPremiumMin}-${Math.round(expectedPremiumMid * 0.9)} per lot)
+- For ITM options: Slightly higher (₹${Math.round(expectedPremiumMid * 1.1)}-${expectedPremiumMax} per lot)
 - Expiry: ${expiryDate}
 - Lot Size: ${lotSize}
-- Provide SPECIFIC entry, target, and stop loss prices`;
+- Provide SPECIFIC entry, target, and stop loss prices
+- Premium MUST scale with stock price - DO NOT use generic values`;
 
     const userPrompt = `Analyze ${name} (${symbol}). Current Price: ₹${analysis.current}, RSI: ${analysis.rsi}, Trend: ${analysis.trend}
 
@@ -137,19 +147,28 @@ Overall Sentiment: ${newsSentiment.overall}
 Summary: ${newsSentiment.summary}
 Articles: ${JSON.stringify(newsSentiment.articles)}
 
-Provide realistic options strategy with EXACT PRICES and REALISTIC PREMIUM TARGETS:
+CRITICAL PREMIUM CALCULATION GUIDELINES:
+- Stock trading at ₹${analysis.current}
+- ATM option premium should be around ₹${expectedPremiumMid} per lot (3.5% of stock price)
+- Valid premium range: ₹${expectedPremiumMin}-${expectedPremiumMax} per lot
+- DO NOT use generic values like ₹50, ₹100, ₹150 for all stocks
+- Premium MUST be proportional to the stock price
+- Higher stock price = Higher premium (e.g., ₹1500 stock needs ₹45-75 premium, not ₹100)
+- Lower stock price = Lower premium (e.g., ₹500 stock needs ₹15-25 premium, not ₹100)
+
+Provide realistic options strategy with EXACT PRICES based on ₹${analysis.current} stock price:
 {
   "strategy": "Long Call" | "Long Put",
-  "strikePrice": <realistic strike near current price>,
+  "strikePrice": <realistic strike near ₹${analysis.current}>,
   "optionType": "CALL" | "PUT",
   "expiryDate": "${expiryDate}",
   "lotSize": ${lotSize},
   "premium": {
-    "buyLeg": <50-150 per lot>,
+    "buyLeg": <MUST be between ₹${expectedPremiumMin}-${expectedPremiumMax}, typically around ₹${expectedPremiumMid} for ATM>,
     "sellLeg": null,
     "netCost": <same as buyLeg>,
-    "targetPremium": <realistic target premium - 20-50% gain for intraday>,
-    "stopLossPremium": <realistic stop loss premium - 25-40% loss>,
+    "targetPremium": <buyLeg + 20-50% gain, realistic for intraday>,
+    "stopLossPremium": <buyLeg - 25-40% loss>,
     "description": "Premium per lot for entry"
   },
   "totalInvestment": <buyLeg × lotSize>,
@@ -227,10 +246,43 @@ Provide realistic options strategy with EXACT PRICES and REALISTIC PREMIUM TARGE
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     
     if (!jsonMatch) {
+      console.error('AI response without JSON:', content);
       throw new Error('Could not parse AI response');
     }
 
-    const prediction = JSON.parse(jsonMatch[0]);
+    let prediction;
+    try {
+      prediction = JSON.parse(jsonMatch[0]);
+    } catch (parseError) {
+      console.error('JSON parse error:', parseError);
+      console.error('Content to parse:', jsonMatch[0]);
+      throw new Error('Invalid JSON in AI response');
+    }
+    
+    // Validate and correct premium if outside realistic range
+    const minPremium = analysis.current * 0.015; // 1.5% minimum
+    const maxPremium = analysis.current * 0.08; // 8% maximum
+    const defaultPremium = Math.round(analysis.current * 0.035); // 3.5% default
+    
+    if (!prediction.premium?.buyLeg || 
+        prediction.premium.buyLeg < minPremium || 
+        prediction.premium.buyLeg > maxPremium) {
+      console.warn(`Premium ${prediction.premium?.buyLeg} out of range [${minPremium}-${maxPremium}], adjusting to ${defaultPremium}`);
+      prediction.premium = prediction.premium || {};
+      prediction.premium.buyLeg = defaultPremium;
+      prediction.premium.netCost = defaultPremium;
+      
+      // Recalculate target and stop loss if needed
+      if (!prediction.premium.targetPremium) {
+        prediction.premium.targetPremium = Math.round(defaultPremium * 1.35); // +35% gain
+      }
+      if (!prediction.premium.stopLossPremium) {
+        prediction.premium.stopLossPremium = Math.round(defaultPremium * 0.7); // -30% loss
+      }
+    }
+    
+    // Ensure totalInvestment is recalculated with corrected premium
+    prediction.totalInvestment = prediction.premium.buyLeg * prediction.lotSize;
 
     return new Response(
       JSON.stringify({ success: true, prediction, historicalData }),
