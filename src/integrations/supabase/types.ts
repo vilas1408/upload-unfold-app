@@ -16,21 +16,36 @@ export type Database = {
     Tables: {
       profiles: {
         Row: {
+          approved_at: string | null
+          approved_by: string | null
           created_at: string
+          date_of_birth: string | null
           email: string
           id: string
+          is_approved: boolean
+          mobile_number: string | null
           updated_at: string
         }
         Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
           created_at?: string
+          date_of_birth?: string | null
           email: string
           id: string
+          is_approved?: boolean
+          mobile_number?: string | null
           updated_at?: string
         }
         Update: {
+          approved_at?: string | null
+          approved_by?: string | null
           created_at?: string
+          date_of_birth?: string | null
           email?: string
           id?: string
+          is_approved?: boolean
+          mobile_number?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -151,7 +166,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_user_approved: { Args: { user_id: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
