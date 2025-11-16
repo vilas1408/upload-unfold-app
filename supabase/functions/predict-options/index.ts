@@ -72,28 +72,76 @@ serve(async (req) => {
       }
     }
     
-    // Get current week Tuesday expiry (weekly options - changed from Thursday as per NSE circular effective Aug 28, 2025)
+    // Calculate expiry date based on option type
     const today = new Date();
-    const currentDay = today.getDay(); // 0 = Sunday, 2 = Tuesday
-    let daysUntilTuesday;
+    let expiryDate: string;
+    let expiryDateISO: string;
     
-    if (currentDay <= 2) {
-      // If today is Sun-Tue, get this Tuesday
-      daysUntilTuesday = 2 - currentDay;
+    if (type === 'index') {
+      // Indices have weekly expiry on Tuesday (as per NSE circular effective Aug 28, 2025)
+      const currentDay = today.getDay(); // 0 = Sunday, 2 = Tuesday
+      let daysUntilTuesday;
+      
+      if (currentDay <= 2) {
+        // If today is Sun-Tue, get this Tuesday
+        daysUntilTuesday = 2 - currentDay;
+      } else {
+        // If today is Wed-Sat, get next Tuesday
+        daysUntilTuesday = 7 - currentDay + 2;
+      }
+      
+      const tuesday = new Date(today);
+      tuesday.setDate(today.getDate() + daysUntilTuesday);
+      expiryDate = tuesday.toLocaleDateString('en-GB', { 
+        day: '2-digit', 
+        month: 'short', 
+        year: 'numeric' 
+      }).toUpperCase();
+      expiryDateISO = tuesday.toISOString().split('T')[0];
     } else {
-      // If today is Wed-Sat, get next Tuesday
-      daysUntilTuesday = 7 - currentDay + 2;
+      // Shares have monthly expiry on last Thursday of the month
+      const currentMonth = today.getMonth();
+      const currentYear = today.getFullYear();
+      
+      // Get last day of current month
+      const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0);
+      const lastDay = lastDayOfMonth.getDate();
+      
+      // Find last Thursday of the month
+      let lastThursday = null;
+      for (let day = lastDay; day >= 1; day--) {
+        const checkDate = new Date(currentYear, currentMonth, day);
+        if (checkDate.getDay() === 4) { // 4 = Thursday
+          lastThursday = checkDate;
+          break;
+        }
+      }
+      
+      // If last Thursday already passed or is today, get next month's last Thursday
+      if (!lastThursday || lastThursday <= today) {
+        const nextMonth = currentMonth + 1;
+        const nextYear = nextMonth > 11 ? currentYear + 1 : currentYear;
+        const adjustedMonth = nextMonth > 11 ? 0 : nextMonth;
+        
+        const lastDayOfNextMonth = new Date(nextYear, adjustedMonth + 1, 0);
+        const lastDayNext = lastDayOfNextMonth.getDate();
+        
+        for (let day = lastDayNext; day >= 1; day--) {
+          const checkDate = new Date(nextYear, adjustedMonth, day);
+          if (checkDate.getDay() === 4) { // 4 = Thursday
+            lastThursday = checkDate;
+            break;
+          }
+        }
+      }
+      
+      expiryDate = lastThursday!.toLocaleDateString('en-GB', { 
+        day: '2-digit', 
+        month: 'short', 
+        year: 'numeric' 
+      }).toUpperCase();
+      expiryDateISO = lastThursday!.toISOString().split('T')[0];
     }
-    
-    const tuesday = new Date(today);
-    tuesday.setDate(today.getDate() + daysUntilTuesday);
-    const expiryDate = tuesday.toLocaleDateString('en-GB', { 
-      day: '2-digit', 
-      month: 'short', 
-      year: 'numeric' 
-    }).toUpperCase();
-    
-    const expiryDateISO = tuesday.toISOString().split('T')[0]; // YYYY-MM-DD format for Upstox
 
     // Determine lot size (as per NSE Circular - updated Nov 2025)
     let lotSize = 500;
