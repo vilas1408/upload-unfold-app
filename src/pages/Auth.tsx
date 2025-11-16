@@ -18,6 +18,8 @@ const Auth = () => {
   const [signupEmail, setSignupEmail] = useState("");
   const [signupPassword, setSignupPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [mobileNumber, setMobileNumber] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
 
   useEffect(() => {
     // Check if user is already logged in
@@ -42,7 +44,7 @@ const Auth = () => {
     setIsLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: loginEmail,
         password: loginPassword,
       });
@@ -61,7 +63,28 @@ const Auth = () => {
             variant: "destructive",
           });
         }
-      } else {
+      } else if (data.user) {
+        // Check if user is approved
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("is_approved")
+          .eq("id", data.user.id)
+          .single();
+
+        if (profileError) {
+          console.error("Error checking approval status:", profileError);
+        } else if (!profile?.is_approved) {
+          // Sign out if not approved
+          await supabase.auth.signOut();
+          toast({
+            title: "Account pending approval",
+            description: "Your account is awaiting admin approval. You'll receive an email once approved.",
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
+
         toast({
           title: "Welcome back!",
           description: "You've successfully logged in.",
@@ -99,12 +122,21 @@ const Auth = () => {
       return;
     }
 
+    if (!mobileNumber || !dateOfBirth) {
+      toast({
+        title: "Missing information",
+        description: "Please provide your mobile number and date of birth.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       const redirectUrl = `${window.location.origin}/`;
       
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: signupEmail,
         password: signupPassword,
         options: {
@@ -126,11 +158,48 @@ const Auth = () => {
             variant: "destructive",
           });
         }
-      } else {
+      } else if (data.user) {
+        // Update profile with additional info
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .update({
+            mobile_number: mobileNumber,
+            date_of_birth: dateOfBirth,
+          })
+          .eq("id", data.user.id);
+
+        if (profileError) {
+          console.error("Error updating profile:", profileError);
+        }
+
+        // Send approval request email
+        try {
+          await supabase.functions.invoke("send-approval-request", {
+            body: {
+              email: signupEmail,
+              mobile_number: mobileNumber,
+              date_of_birth: dateOfBirth,
+              user_id: data.user.id,
+            },
+          });
+        } catch (emailError) {
+          console.error("Error sending approval email:", emailError);
+        }
+
+        // Sign out the user immediately
+        await supabase.auth.signOut();
+
         toast({
-          title: "Account created!",
-          description: "Your account has been created successfully.",
+          title: "Registration submitted!",
+          description: "Your account is pending approval. You'll receive an email once approved.",
         });
+
+        // Clear form
+        setSignupEmail("");
+        setSignupPassword("");
+        setConfirmPassword("");
+        setMobileNumber("");
+        setDateOfBirth("");
       }
     } catch (error) {
       toast({
@@ -202,6 +271,27 @@ const Auth = () => {
                     placeholder="you@example.com"
                     value={signupEmail}
                     onChange={(e) => setSignupEmail(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="mobile-number">Mobile Number</Label>
+                  <Input
+                    id="mobile-number"
+                    type="tel"
+                    placeholder="+91 1234567890"
+                    value={mobileNumber}
+                    onChange={(e) => setMobileNumber(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="date-of-birth">Date of Birth</Label>
+                  <Input
+                    id="date-of-birth"
+                    type="date"
+                    value={dateOfBirth}
+                    onChange={(e) => setDateOfBirth(e.target.value)}
                     required
                   />
                 </div>
