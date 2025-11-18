@@ -159,12 +159,17 @@ const Auth = () => {
           });
         }
       } else if (data.user) {
-        // Update profile with additional info
+        // Check if this is the admin email
+        const isAdmin = signupEmail.toLowerCase() === "vilas.chile@gmail.com";
+        
+        // Update profile with additional info and auto-approve if admin
         const { error: profileError } = await supabase
           .from("profiles")
           .update({
             mobile_number: mobileNumber,
             date_of_birth: dateOfBirth,
+            is_approved: isAdmin,
+            approved_at: isAdmin ? new Date().toISOString() : null,
           })
           .eq("id", data.user.id);
 
@@ -172,27 +177,42 @@ const Auth = () => {
           console.error("Error updating profile:", profileError);
         }
 
-        // Send approval request email
-        try {
-          await supabase.functions.invoke("send-approval-request", {
-            body: {
-              email: signupEmail,
-              mobile_number: mobileNumber,
-              date_of_birth: dateOfBirth,
-              user_id: data.user.id,
-            },
+        if (isAdmin) {
+          // Admin user - auto-approved, no need to sign out
+          toast({
+            title: "Welcome Admin!",
+            description: "Your account has been automatically approved.",
           });
-        } catch (emailError) {
-          console.error("Error sending approval email:", emailError);
+          
+          // Clear form
+          setSignupEmail("");
+          setSignupPassword("");
+          setConfirmPassword("");
+          setMobileNumber("");
+          setDateOfBirth("");
+        } else {
+          // Regular user - send approval request email
+          try {
+            await supabase.functions.invoke("send-approval-request", {
+              body: {
+                email: signupEmail,
+                mobile_number: mobileNumber,
+                date_of_birth: dateOfBirth,
+                user_id: data.user.id,
+              },
+            });
+          } catch (emailError) {
+            console.error("Error sending approval email:", emailError);
+          }
+
+          // Sign out the user immediately
+          await supabase.auth.signOut();
+
+          toast({
+            title: "Registration submitted!",
+            description: "Your account is pending approval. You'll receive an email once approved.",
+          });
         }
-
-        // Sign out the user immediately
-        await supabase.auth.signOut();
-
-        toast({
-          title: "Registration submitted!",
-          description: "Your account is pending approval. You'll receive an email once approved.",
-        });
 
         // Clear form
         setSignupEmail("");
