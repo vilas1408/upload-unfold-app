@@ -46,7 +46,7 @@ const handler = async (req: Request): Promise<Response> => {
     const rejectUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/approve-user?user_id=${user_id}&action=reject`;
 
     const emailResponse = await sendEmail(
-      ["omkarbomble620@gmail.com"],
+      ["vilas.chile@gmail.com"],
       "New User Registration Approval Required",
       `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
