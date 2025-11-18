@@ -1,8 +1,25 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Resend } from "npm:resend@2.0.0";
 
-const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+
+async function sendEmail(to: string[], subject: string, html: string) {
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ from: "StockPredict AI <onboarding@resend.dev>", to, subject, html }),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(`Resend API error: ${JSON.stringify(error)}`);
+  }
+  
+  return response.json();
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -52,11 +69,10 @@ const handler = async (req: Request): Promise<Response> => {
       if (profileError) throw profileError;
 
       // Send approval email to user
-      await resend.emails.send({
-        from: "StockPredict AI <onboarding@resend.dev>",
-        to: [profile.email],
-        subject: "Your StockPredict AI Account Has Been Approved!",
-        html: `
+      await sendEmail(
+        [profile.email],
+        "Your StockPredict AI Account Has Been Approved!",
+        `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h1 style="color: #22c55e;">Welcome to StockPredict AI!</h1>
             <p>Great news! Your account has been approved and you can now login to access AI-powered stock predictions.</p>
@@ -72,8 +88,8 @@ const handler = async (req: Request): Promise<Response> => {
               This is an automated email from StockPredict AI
             </p>
           </div>
-        `,
-      });
+        `
+      );
 
       console.log("User approved and notification sent");
 
