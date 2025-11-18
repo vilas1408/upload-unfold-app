@@ -103,12 +103,19 @@ function extractATMPremium(optionChainData: any, currentPrice: number, optionTyp
         Math.abs(a.strikePrice - currentPrice) - Math.abs(b.strikePrice - currentPrice)
       );
       const nearestData = sortedRecords[0];
-      const premium = optionType === 'CE' ? nearestData.CE?.lastPrice : nearestData.PE?.lastPrice;
+      const premium = optionType === 'CE' ? nearestData.CE?.ltp : nearestData.PE?.ltp;
       return premium || null;
     }
     
-    // Extract premium based on option type
-    const premium = optionType === 'CE' ? atmData.CE?.lastPrice : atmData.PE?.lastPrice;
+    // Log NSE data for debugging
+    console.log(`NSE Data for ${optionType} at strike ${atmStrike}:`, {
+      ltp: atmData[optionType]?.ltp,
+      lastPrice: atmData[optionType]?.lastPrice,
+      strikePrice: atmData.strikePrice
+    });
+    
+    // Extract premium based on option type (use ltp - Last Traded Price)
+    const premium = optionType === 'CE' ? atmData.CE?.ltp : atmData.PE?.ltp;
     
     console.log(`${optionType} ATM premium at strike ${atmStrike}: ₹${premium}`);
     return premium || null;
@@ -542,34 +549,40 @@ Provide realistic options strategy:
       throw new Error('Invalid JSON in AI response');
     }
     
-    // Validate and correct premium if outside realistic range
-    let minPremium, maxPremium, defaultPremium;
-    
-    if (type === 'index') {
-      minPremium = expectedPremiumMin;
-      maxPremium = expectedPremiumMax;
-      defaultPremium = expectedPremiumMid;
-    } else {
-      minPremium = analysis.current * 0.005; // 0.5% for stocks
-      maxPremium = analysis.current * 0.02; // 2% for stocks
-      defaultPremium = Math.round(analysis.current * 0.012); // 1.2% default for stocks
-    }
-    
-    if (!prediction.premium?.buyLeg || 
-        prediction.premium.buyLeg < minPremium || 
-        prediction.premium.buyLeg > maxPremium) {
-      console.warn(`Premium ${prediction.premium?.buyLeg} out of range [${minPremium}-${maxPremium}], adjusting to ${defaultPremium}`);
-      prediction.premium = prediction.premium || {};
-      prediction.premium.buyLeg = defaultPremium;
-      prediction.premium.netCost = defaultPremium;
+    // Only validate AI estimates, NEVER validate real NSE data
+    if (dataSource === 'AI_ESTIMATED') {
+      // Validate and correct premium if outside realistic range
+      let minPremium, maxPremium, defaultPremium;
       
-      // Recalculate target and stop loss if needed
-      if (!prediction.premium.targetPremium) {
-        prediction.premium.targetPremium = Math.round(defaultPremium * 1.35); // +35% gain
+      if (type === 'index') {
+        minPremium = expectedPremiumMin;
+        maxPremium = expectedPremiumMax;
+        defaultPremium = expectedPremiumMid;
+      } else {
+        minPremium = analysis.current * 0.005; // 0.5% for stocks
+        maxPremium = analysis.current * 0.02; // 2% for stocks
+        defaultPremium = Math.round(analysis.current * 0.012); // 1.2% default for stocks
       }
-      if (!prediction.premium.stopLossPremium) {
-        prediction.premium.stopLossPremium = Math.round(defaultPremium * 0.7); // -30% loss
+      
+      if (!prediction.premium?.buyLeg || 
+          prediction.premium.buyLeg < minPremium || 
+          prediction.premium.buyLeg > maxPremium) {
+        console.warn(`Premium ${prediction.premium?.buyLeg} out of range [${minPremium}-${maxPremium}], adjusting to ${defaultPremium}`);
+        prediction.premium = prediction.premium || {};
+        prediction.premium.buyLeg = defaultPremium;
+        prediction.premium.netCost = defaultPremium;
+        
+        // Recalculate target and stop loss if needed
+        if (!prediction.premium.targetPremium) {
+          prediction.premium.targetPremium = Math.round(defaultPremium * 1.35); // +35% gain
+        }
+        if (!prediction.premium.stopLossPremium) {
+          prediction.premium.stopLossPremium = Math.round(defaultPremium * 0.7); // -30% loss
+        }
       }
+    } else {
+      // For NSE_LIVE: Trust the real market data completely
+      console.log(`✓ Using real NSE premium: ₹${prediction.premium?.buyLeg} (no validation)`);
     }
     
     // Ensure totalInvestment is recalculated with corrected premium
