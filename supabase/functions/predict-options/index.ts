@@ -76,6 +76,7 @@ serve(async (req) => {
     const today = new Date();
     let expiryDate: string;
     let expiryDateISO: string;
+    let isExpiryToday = false;
     
     if (type === 'index') {
       // Indices have weekly expiry on Tuesday (as per NSE circular effective Aug 28, 2025)
@@ -92,12 +93,22 @@ serve(async (req) => {
       
       const tuesday = new Date(today);
       tuesday.setDate(today.getDate() + daysUntilTuesday);
-      expiryDate = tuesday.toLocaleDateString('en-GB', { 
-        day: '2-digit', 
-        month: 'short', 
-        year: 'numeric' 
-      }).toUpperCase();
       expiryDateISO = tuesday.toISOString().split('T')[0];
+      isExpiryToday = daysUntilTuesday === 0;
+      
+      if (isExpiryToday) {
+        expiryDate = `TODAY (${tuesday.toLocaleDateString('en-GB', { 
+          day: '2-digit', 
+          month: 'short', 
+          year: 'numeric' 
+        }).toUpperCase()}) - EXIT BEFORE 3:15 PM`;
+      } else {
+        expiryDate = tuesday.toLocaleDateString('en-GB', { 
+          day: '2-digit', 
+          month: 'short', 
+          year: 'numeric' 
+        }).toUpperCase();
+      }
     } else {
       // Shares have monthly expiry on last Thursday of the month
       const currentMonth = today.getMonth();
@@ -135,12 +146,22 @@ serve(async (req) => {
         }
       }
       
-      expiryDate = lastThursday!.toLocaleDateString('en-GB', { 
-        day: '2-digit', 
-        month: 'short', 
-        year: 'numeric' 
-      }).toUpperCase();
       expiryDateISO = lastThursday!.toISOString().split('T')[0];
+      isExpiryToday = expiryDateISO === today.toISOString().split('T')[0];
+      
+      if (isExpiryToday) {
+        expiryDate = `TODAY (${lastThursday!.toLocaleDateString('en-GB', { 
+          day: '2-digit', 
+          month: 'short', 
+          year: 'numeric' 
+        }).toUpperCase()}) - EXIT BEFORE 3:15 PM`;
+      } else {
+        expiryDate = lastThursday!.toLocaleDateString('en-GB', { 
+          day: '2-digit', 
+          month: 'short', 
+          year: 'numeric' 
+        }).toUpperCase();
+      }
     }
 
     // Determine lot size (as per NSE Circular - updated Nov 2025)
@@ -160,6 +181,31 @@ serve(async (req) => {
       upstoxSymbol = 'NSE_INDEX|NIFTY MID SELECT';
     }
 
+    // Attempt to fetch real option premium from Upstox
+    let realPremium: number | null = null;
+    let usedUpstoxData = false;
+    let strikePrice = Math.round(analysis.current / 50) * 50; // ATM strike for index
+    
+    if (type === 'index' && upstoxSymbol) {
+      console.log('Attempting to fetch Upstox option chain data');
+      try {
+        const upstoxApiKey = Deno.env.get('UPSTOX_API_KEY');
+        const upstoxApiSecret = Deno.env.get('UPSTOX_API_SECRET');
+        
+        if (upstoxApiKey && upstoxApiSecret) {
+          // Note: This is a simplified implementation
+          // In production, you'd need to:
+          // 1. Authenticate with Upstox OAuth
+          // 2. Get proper access token
+          // 3. Call option chain API with correct parameters
+          // For now, we'll fall back to AI estimation
+          console.log('Upstox credentials found but full OAuth flow needed');
+        }
+      } catch (error) {
+        console.error('Upstox API error:', error);
+      }
+    }
+
     // Use AI prediction with Yahoo Finance data
     console.log('Generating AI prediction with Yahoo Finance data');
     
@@ -168,25 +214,53 @@ serve(async (req) => {
       throw new Error('GOOGLE_GEMINI_API_KEY is not configured');
     }
     
-    // Calculate expected premium range based on stock price
-    const expectedPremiumMin = Math.round(analysis.current * 0.02); // 2% of stock price
-    const expectedPremiumMax = Math.round(analysis.current * 0.05); // 5% of stock price
-    const expectedPremiumMid = Math.round(analysis.current * 0.035); // 3.5% typical ATM premium
+    // Calculate realistic premium ranges based on option type and underlying
+    let expectedPremiumMin, expectedPremiumMax, expectedPremiumMid;
     
-    const systemPrompt = `You are an options trading expert. Provide SIMPLE INTRADAY options strategies with EXACT PRICE LEVELS.
+    if (type === 'index') {
+      // Index options have absolute premium ranges
+      if (symbol === 'NIFTY' || symbol === '^NSEI') {
+        expectedPremiumMin = 60;
+        expectedPremiumMax = 150;
+        expectedPremiumMid = 100;
+      } else if (symbol === 'BANKNIFTY' || symbol === '^NSEBANK') {
+        expectedPremiumMin = 100;
+        expectedPremiumMax = 300;
+        expectedPremiumMid = 180;
+      } else if (symbol === 'FINNIFTY') {
+        expectedPremiumMin = 70;
+        expectedPremiumMax = 180;
+        expectedPremiumMid = 120;
+      } else if (symbol === 'MIDCPNIFTY') {
+        expectedPremiumMin = 40;
+        expectedPremiumMax = 120;
+        expectedPremiumMid = 70;
+      } else {
+        // Default for other indices
+        expectedPremiumMin = 50;
+        expectedPremiumMax = 200;
+        expectedPremiumMid = 100;
+      }
+    } else {
+      // Stock options: 0.5-2% of stock price
+      expectedPremiumMin = Math.round(analysis.current * 0.005);
+      expectedPremiumMax = Math.round(analysis.current * 0.02);
+      expectedPremiumMid = Math.round(analysis.current * 0.012);
+    }
+    
+    const systemPrompt = `You are an options trading expert. Provide SIMPLE INTRADAY options strategies with REALISTIC PREMIUMS.
     
 RULES:
 - BULLISH: Recommend BUY CALL only
 - BEARISH: Recommend BUY PUT only
-- Stock Price: ₹${analysis.current}
-- Premium must be realistic: ₹${expectedPremiumMin}-${expectedPremiumMax} per lot (2-5% of stock price)
-- For ATM options: Around ₹${expectedPremiumMid} per lot
-- For OTM options: Slightly lower (₹${expectedPremiumMin}-${Math.round(expectedPremiumMid * 0.9)} per lot)
-- For ITM options: Slightly higher (₹${Math.round(expectedPremiumMid * 1.1)}-${expectedPremiumMax} per lot)
+- Current Price: ₹${analysis.current}
+- Premium Range: ₹${expectedPremiumMin}-${expectedPremiumMax} per lot
+- ATM Premium: Around ₹${expectedPremiumMid} per lot
 - Expiry: ${expiryDate}
 - Lot Size: ${lotSize}
+${isExpiryToday ? '- CRITICAL: TODAY IS EXPIRY - Intraday only, exit before 3:15 PM' : ''}
 - Provide SPECIFIC entry, target, and stop loss prices
-- Premium MUST scale with stock price - DO NOT use generic values`;
+- DO NOT use hard-coded generic premiums - use the ranges provided above`;
 
     const userPrompt = `Analyze ${name} (${symbol}). Current Price: ₹${analysis.current}, RSI: ${analysis.rsi}, Trend: ${analysis.trend}
 
@@ -195,16 +269,12 @@ Overall Sentiment: ${newsSentiment.overall}
 Summary: ${newsSentiment.summary}
 Articles: ${JSON.stringify(newsSentiment.articles)}
 
-CRITICAL PREMIUM CALCULATION GUIDELINES:
-- Stock trading at ₹${analysis.current}
-- ATM option premium should be around ₹${expectedPremiumMid} per lot (3.5% of stock price)
-- Valid premium range: ₹${expectedPremiumMin}-${expectedPremiumMax} per lot
-- DO NOT use generic values like ₹50, ₹100, ₹150 for all stocks
-- Premium MUST be proportional to the stock price
-- Higher stock price = Higher premium (e.g., ₹1500 stock needs ₹45-75 premium, not ₹100)
-- Lower stock price = Lower premium (e.g., ₹500 stock needs ₹15-25 premium, not ₹100)
+CRITICAL PREMIUM GUIDELINES:
+- ${type === 'index' ? `Index Option Premium: ₹${expectedPremiumMin}-${expectedPremiumMax}` : `Stock Option Premium: ₹${expectedPremiumMin}-${expectedPremiumMax} (0.5-2% of stock price)`}
+- ATM Premium: Around ₹${expectedPremiumMid}
+${isExpiryToday ? '- ALERT: TODAY IS EXPIRY DAY - Exit all positions before 3:15 PM' : ''}
 
-Provide realistic options strategy with EXACT PRICES based on ₹${analysis.current} stock price:
+Provide realistic options strategy:
 {
   "strategy": "Long Call" | "Long Put",
   "strikePrice": <realistic strike near ₹${analysis.current}>,
@@ -308,9 +378,17 @@ Provide realistic options strategy with EXACT PRICES based on ₹${analysis.curr
     }
     
     // Validate and correct premium if outside realistic range
-    const minPremium = analysis.current * 0.015; // 1.5% minimum
-    const maxPremium = analysis.current * 0.08; // 8% maximum
-    const defaultPremium = Math.round(analysis.current * 0.035); // 3.5% default
+    let minPremium, maxPremium, defaultPremium;
+    
+    if (type === 'index') {
+      minPremium = expectedPremiumMin;
+      maxPremium = expectedPremiumMax;
+      defaultPremium = expectedPremiumMid;
+    } else {
+      minPremium = analysis.current * 0.005; // 0.5% for stocks
+      maxPremium = analysis.current * 0.02; // 2% for stocks
+      defaultPremium = Math.round(analysis.current * 0.012); // 1.2% default for stocks
+    }
     
     if (!prediction.premium?.buyLeg || 
         prediction.premium.buyLeg < minPremium || 
@@ -333,7 +411,14 @@ Provide realistic options strategy with EXACT PRICES based on ₹${analysis.curr
     prediction.totalInvestment = prediction.premium.buyLeg * prediction.lotSize;
 
     return new Response(
-      JSON.stringify({ success: true, prediction, historicalData }),
+      JSON.stringify({ 
+        success: true, 
+        prediction, 
+        historicalData,
+        isLiveData: usedUpstoxData,
+        premiumSource: usedUpstoxData ? "upstox-live" : "ai-estimate",
+        isExpiryToday
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error: any) {

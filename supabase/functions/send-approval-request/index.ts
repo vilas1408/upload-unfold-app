@@ -1,7 +1,24 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { Resend } from "npm:resend@2.0.0";
 
-const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+
+async function sendEmail(to: string[], subject: string, html: string) {
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ from: "StockPredict AI <onboarding@resend.dev>", to, subject, html }),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(`Resend API error: ${JSON.stringify(error)}`);
+  }
+  
+  return response.json();
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,11 +45,10 @@ const handler = async (req: Request): Promise<Response> => {
     const approvalUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/approve-user?user_id=${user_id}&action=approve`;
     const rejectUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/approve-user?user_id=${user_id}&action=reject`;
 
-    const emailResponse = await resend.emails.send({
-      from: "StockPredict AI <onboarding@resend.dev>",
-      to: ["omkarbomble620@gmail.com"],
-      subject: "New User Registration Approval Required",
-      html: `
+    const emailResponse = await sendEmail(
+      ["omkarbomble620@gmail.com"],
+      "New User Registration Approval Required",
+      `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h1 style="color: #333;">New User Registration</h1>
           <p>A new user has signed up and is awaiting approval:</p>
@@ -64,8 +80,8 @@ const handler = async (req: Request): Promise<Response> => {
             This is an automated email from StockPredict AI
           </p>
         </div>
-      `,
-    });
+      `
+    );
 
     console.log("Approval request email sent successfully:", emailResponse);
 

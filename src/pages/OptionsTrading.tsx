@@ -112,10 +112,16 @@ const OptionsTrading = () => {
         
         {selectedOption && prediction && historicalData && (
           <>
-            {isLiveData && (
+            {isLiveData ? (
               <div className="text-center mb-4 p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
                 <p className="text-green-400 font-semibold">
-                  🔴 LIVE DATA: Showing real-time premiums and Greeks from Upstox
+                  🟢 LIVE DATA: Real-time premiums from market
+                </p>
+              </div>
+            ) : (
+              <div className="text-center mb-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                <p className="text-yellow-400 font-semibold">
+                  ⚠️ AI ESTIMATE: Premiums are approximate - verify with your broker before trading
                 </p>
               </div>
             )}
