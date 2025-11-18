@@ -1,6 +1,6 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Minus, AlertTriangle, Target, Shield } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, AlertTriangle, Target, Shield, Activity, Brain, Calendar, Clock } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 interface OptionsPrediction {
@@ -66,9 +66,20 @@ interface OptionsPredictionDisplayProps {
   option: { symbol: string; name: string; type: 'share' | 'index' };
   prediction: OptionsPrediction;
   historicalData: any[];
+  dataSource?: 'NSE_LIVE' | 'AI_ESTIMATED';
+  realPremiums?: {
+    callPremium: number;
+    putPremium: number;
+  } | null;
+  expiryInfo?: {
+    date: string;
+    formatted: string;
+    daysToExpiry: number;
+    isExpiryToday: boolean;
+  };
 }
 
-const OptionsPredictionDisplay = ({ option, prediction, historicalData }: OptionsPredictionDisplayProps) => {
+const OptionsPredictionDisplay = ({ option, prediction, historicalData, dataSource, realPremiums, expiryInfo }: OptionsPredictionDisplayProps) => {
   const getConfidenceColor = (confidence: string) => {
     const value = parseInt(confidence);
     if (value >= 70) return "text-green-500";
@@ -98,14 +109,45 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
     <div id="options-prediction" className="container mx-auto px-4 py-12">
       <Card className="p-6 md:p-8 backdrop-blur-sm bg-card/50 border-primary/20">
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
             <div>
               <h2 className="text-3xl font-bold gradient-text mb-2">
                 {option.name} ({option.symbol})
               </h2>
-              <Badge variant="outline" className="text-sm">
-                {option.type === 'share' ? 'Stock Options' : 'Index Options'}
-              </Badge>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge variant="outline" className="text-sm">
+                  {option.type === 'share' ? 'Stock Options' : 'Index Options'}
+                </Badge>
+                {dataSource && (
+                  <Badge 
+                    variant={dataSource === 'NSE_LIVE' ? 'default' : 'secondary'} 
+                    className="flex items-center gap-1"
+                  >
+                    {dataSource === 'NSE_LIVE' ? (
+                      <>
+                        <Activity className="h-3 w-3" />
+                        Live NSE Data
+                      </>
+                    ) : (
+                      <>
+                        <Brain className="h-3 w-3" />
+                        AI Estimated
+                      </>
+                    )}
+                  </Badge>
+                )}
+                {expiryInfo && (
+                  <Badge 
+                    variant={expiryInfo.isExpiryToday ? 'destructive' : 'outline'}
+                    className="flex items-center gap-1"
+                  >
+                    <Calendar className="h-3 w-3" />
+                    {expiryInfo.isExpiryToday ? 'TODAY - EXIT BY 3:15 PM' : 
+                     expiryInfo.daysToExpiry === 1 ? 'Tomorrow' :
+                     `${expiryInfo.daysToExpiry} days to expiry`}
+                  </Badge>
+                )}
+              </div>
             </div>
             <Badge className={`text-lg px-4 py-2 ${getConfidenceBgColor(prediction.probability)}`}>
               <span className={getConfidenceColor(prediction.probability)}>
@@ -113,6 +155,44 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData }: Option
               </span>
             </Badge>
           </div>
+
+          {/* Real Premium Display */}
+          {realPremiums && (
+            <Card className="p-4 mb-6 bg-primary/5 border-primary/20">
+              <div className="flex items-center gap-2 mb-3">
+                <Activity className="h-5 w-5 text-primary" />
+                <h3 className="text-lg font-semibold">Live NSE Option Premiums</h3>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center p-3 bg-card rounded-lg">
+                  <p className="text-sm text-muted-foreground mb-1">ATM Call Premium</p>
+                  <p className="text-2xl font-bold text-green-500">₹{realPremiums.callPremium.toFixed(2)}</p>
+                  <p className="text-xs text-muted-foreground mt-1">per lot</p>
+                </div>
+                <div className="text-center p-3 bg-card rounded-lg">
+                  <p className="text-sm text-muted-foreground mb-1">ATM Put Premium</p>
+                  <p className="text-2xl font-bold text-red-500">₹{realPremiums.putPremium.toFixed(2)}</p>
+                  <p className="text-xs text-muted-foreground mt-1">per lot</p>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Time to Expiry Warning */}
+          {expiryInfo && expiryInfo.daysToExpiry <= 2 && !expiryInfo.isExpiryToday && (
+            <Card className="p-4 mb-6 bg-yellow-500/10 border-yellow-500/20">
+              <div className="flex items-center gap-2">
+                <Clock className="h-5 w-5 text-yellow-500" />
+                <div>
+                  <p className="font-semibold text-yellow-600 dark:text-yellow-400">Near Expiry Warning</p>
+                  <p className="text-sm text-muted-foreground">
+                    Only {expiryInfo.daysToExpiry} day{expiryInfo.daysToExpiry > 1 ? 's' : ''} until expiry. 
+                    Limited time value remaining - focus on directional moves.
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
         </div>
 
         <div className="grid md:grid-cols-2 gap-6 mb-8">

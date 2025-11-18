@@ -18,7 +18,9 @@ const OptionsTrading = () => {
   const [prediction, setPrediction] = useState<any | null>(null);
   const [historicalData, setHistoricalData] = useState<any[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isLiveData, setIsLiveData] = useState(false);
+  const [dataSource, setDataSource] = useState<'NSE_LIVE' | 'AI_ESTIMATED' | null>(null);
+  const [realPremiums, setRealPremiums] = useState<{ callPremium: number; putPremium: number } | null>(null);
+  const [expiryInfo, setExpiryInfo] = useState<any | null>(null);
 
   useEffect(() => {
     // Check if user is logged in
@@ -58,11 +60,13 @@ const OptionsTrading = () => {
       if (data.success) {
         setPrediction(data.prediction);
         setHistoricalData(data.historicalData);
-        setIsLiveData(data.isLiveData || false);
+        setDataSource(data.dataSource || 'AI_ESTIMATED');
+        setRealPremiums(data.realPremiums || null);
+        setExpiryInfo(data.expiryInfo || null);
         
         toast({
           title: "Options Prediction Generated",
-          description: `${data.isLiveData ? '🔴 LIVE DATA:' : 'AI Estimate:'} Options analysis for ${name} is ready!`,
+          description: `${data.dataSource === 'NSE_LIVE' ? '🟢 LIVE NSE DATA:' : '🔮 AI Estimate:'} Options analysis for ${name} is ready!`,
         });
 
         setTimeout(() => {
@@ -112,16 +116,17 @@ const OptionsTrading = () => {
         
         {selectedOption && prediction && historicalData && (
           <>
-            {isLiveData ? (
+            {dataSource === 'NSE_LIVE' ? (
               <div className="text-center mb-4 p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
-                <p className="text-green-400 font-semibold">
-                  🟢 LIVE DATA: Real-time premiums from market
+                <p className="text-green-400 font-semibold flex items-center justify-center gap-2">
+                  <span className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></span>
+                  LIVE NSE DATA: Real-time premiums from National Stock Exchange
                 </p>
               </div>
             ) : (
               <div className="text-center mb-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                 <p className="text-yellow-400 font-semibold">
-                  ⚠️ AI ESTIMATE: Premiums are approximate - verify with your broker before trading
+                  🔮 AI ESTIMATED: Premiums are calculated estimates{expiryInfo && ` with ${expiryInfo.daysToExpiry} days time value`} - verify with your broker before trading
                 </p>
               </div>
             )}
@@ -129,6 +134,9 @@ const OptionsTrading = () => {
               option={selectedOption} 
               prediction={prediction}
               historicalData={historicalData}
+              dataSource={dataSource}
+              realPremiums={realPremiums}
+              expiryInfo={expiryInfo}
             />
           </>
         )}

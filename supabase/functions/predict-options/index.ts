@@ -6,6 +6,133 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// NSE API Configuration
+const NSE_BASE_URL = "https://www.nseindia.com";
+const NSE_OPTION_CHAIN_URL = "https://www.nseindia.com/api/option-chain-indices";
+
+const NSE_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'application/json',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Accept-Encoding': 'gzip, deflate, br',
+};
+
+// Get current time in IST (UTC + 5:30)
+function getCurrentISTTime(): Date {
+  const now = new Date();
+  const istOffset = 5.5 * 60 * 60 * 1000; // 5 hours 30 minutes
+  return new Date(now.getTime() + istOffset);
+}
+
+// Check if market is closed (after 3:15 PM IST)
+function isMarketClosed(): boolean {
+  const istTime = getCurrentISTTime();
+  const hours = istTime.getUTCHours();
+  const minutes = istTime.getUTCMinutes();
+  const currentTimeInMinutes = hours * 60 + minutes;
+  const marketCloseTime = 15 * 60 + 15; // 3:15 PM
+  
+  return currentTimeInMinutes >= marketCloseTime;
+}
+
+// Get cookies by visiting NSE homepage
+async function getNSECookies(): Promise<string> {
+  try {
+    const response = await fetch(NSE_BASE_URL, {
+      headers: NSE_HEADERS,
+    });
+    
+    const cookies = response.headers.get('set-cookie');
+    return cookies || '';
+  } catch (error) {
+    console.error('Error getting NSE cookies:', error);
+    return '';
+  }
+}
+
+// Fetch option chain data from NSE
+async function fetchNSEOptionChain(symbol: string): Promise<any> {
+  try {
+    console.log('Fetching NSE option chain for:', symbol);
+    
+    // Get fresh cookies
+    const cookies = await getNSECookies();
+    
+    // Fetch option chain data
+    const url = `${NSE_OPTION_CHAIN_URL}?symbol=${symbol}`;
+    const response = await fetch(url, {
+      headers: {
+        ...NSE_HEADERS,
+        'Cookie': cookies,
+      },
+    });
+    
+    if (!response.ok) {
+      console.error(`NSE API returned status ${response.status}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    console.log('Successfully fetched NSE option chain data');
+    return data;
+  } catch (error) {
+    console.error('Error fetching NSE option chain:', error);
+    return null;
+  }
+}
+
+// Extract ATM premium from NSE option chain data
+function extractATMPremium(optionChainData: any, currentPrice: number, optionType: 'CE' | 'PE'): number | null {
+  try {
+    const records = optionChainData?.records?.data || [];
+    
+    if (records.length === 0) return null;
+    
+    // Find ATM strike (nearest to current price)
+    // Round to nearest 50 for Nifty, 100 for BankNifty
+    const strikeInterval = currentPrice > 30000 ? 100 : 50;
+    const atmStrike = Math.round(currentPrice / strikeInterval) * strikeInterval;
+    
+    // Find the option data for ATM strike
+    const atmData = records.find((record: any) => record.strikePrice === atmStrike);
+    
+    if (!atmData) {
+      console.log(`ATM strike ${atmStrike} not found, trying nearby strikes`);
+      // Try nearest strikes
+      const sortedRecords = records.sort((a: any, b: any) => 
+        Math.abs(a.strikePrice - currentPrice) - Math.abs(b.strikePrice - currentPrice)
+      );
+      const nearestData = sortedRecords[0];
+      const premium = optionType === 'CE' ? nearestData.CE?.lastPrice : nearestData.PE?.lastPrice;
+      return premium || null;
+    }
+    
+    // Extract premium based on option type
+    const premium = optionType === 'CE' ? atmData.CE?.lastPrice : atmData.PE?.lastPrice;
+    
+    console.log(`${optionType} ATM premium at strike ${atmStrike}: ₹${premium}`);
+    return premium || null;
+  } catch (error) {
+    console.error('Error extracting ATM premium:', error);
+    return null;
+  }
+}
+
+// Calculate estimated premium with time value multiplier (fallback)
+function calculateEstimatedPremium(baseMin: number, baseMax: number, daysToExpiry: number) {
+  let multiplier = 1.0;
+  
+  if (daysToExpiry >= 8) multiplier = 2.0;
+  else if (daysToExpiry >= 5) multiplier = 1.7;
+  else if (daysToExpiry >= 2) multiplier = 1.4;
+  
+  return {
+    min: Math.round(baseMin * multiplier),
+    max: Math.round(baseMax * multiplier),
+    mid: Math.round(((baseMin + baseMax) / 2) * multiplier),
+  };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -72,15 +199,17 @@ serve(async (req) => {
       }
     }
     
-    // Calculate expiry date based on option type
-    const today = new Date();
+    // Calculate expiry date based on option type with IST timezone and market hours
+    const istTime = getCurrentISTTime();
+    const marketClosed = isMarketClosed();
     let expiryDate: string;
     let expiryDateISO: string;
     let isExpiryToday = false;
+    let daysToExpiry = 0;
     
     if (type === 'index') {
       // Indices have weekly expiry on Tuesday (as per NSE circular effective Aug 28, 2025)
-      const currentDay = today.getDay(); // 0 = Sunday, 2 = Tuesday
+      const currentDay = istTime.getUTCDay(); // 0 = Sunday, 2 = Tuesday
       let daysUntilTuesday;
       
       if (currentDay <= 2) {
@@ -91,9 +220,16 @@ serve(async (req) => {
         daysUntilTuesday = 7 - currentDay + 2;
       }
       
-      const tuesday = new Date(today);
-      tuesday.setDate(today.getDate() + daysUntilTuesday);
+      // If today is Tuesday but market is closed, skip to next Tuesday
+      if (daysUntilTuesday === 0 && marketClosed) {
+        daysUntilTuesday = 7;
+        console.log('Market closed on expiry day, moving to next Tuesday');
+      }
+      
+      const tuesday = new Date(istTime);
+      tuesday.setUTCDate(istTime.getUTCDate() + daysUntilTuesday);
       expiryDateISO = tuesday.toISOString().split('T')[0];
+      daysToExpiry = daysUntilTuesday;
       isExpiryToday = daysUntilTuesday === 0;
       
       if (isExpiryToday) {
@@ -111,43 +247,51 @@ serve(async (req) => {
       }
     } else {
       // Shares have monthly expiry on last Thursday of the month
-      const currentMonth = today.getMonth();
-      const currentYear = today.getFullYear();
+      const currentMonth = istTime.getUTCMonth();
+      const currentYear = istTime.getUTCFullYear();
+      const currentDate = istTime.getUTCDate();
       
-      // Get last day of current month
-      const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0);
-      const lastDay = lastDayOfMonth.getDate();
-      
-      // Find last Thursday of the month
+      // Find the last Thursday of the current month
       let lastThursday = null;
-      for (let day = lastDay; day >= 1; day--) {
-        const checkDate = new Date(currentYear, currentMonth, day);
-        if (checkDate.getDay() === 4) { // 4 = Thursday
-          lastThursday = checkDate;
+      for (let day = 31; day >= 1; day--) {
+        const testDate = new Date(Date.UTC(currentYear, currentMonth, day));
+        if (testDate.getUTCMonth() === currentMonth && testDate.getUTCDay() === 4) {
+          lastThursday = testDate;
           break;
         }
       }
       
-      // If last Thursday already passed or is today, get next month's last Thursday
-      if (!lastThursday || lastThursday <= today) {
-        const nextMonth = currentMonth + 1;
-        const nextYear = nextMonth > 11 ? currentYear + 1 : currentYear;
-        const adjustedMonth = nextMonth > 11 ? 0 : nextMonth;
+      // If the last Thursday is today but market closed, or has already passed, use next month's last Thursday
+      const isLastThursdayToday = lastThursday && 
+        lastThursday.getUTCDate() === currentDate && 
+        lastThursday.getUTCMonth() === currentMonth;
+      
+      if (!lastThursday || lastThursday < istTime || (isLastThursdayToday && marketClosed)) {
+        // Move to next month
+        const nextMonth = currentMonth === 11 ? 0 : currentMonth + 1;
+        const nextYear = currentMonth === 11 ? currentYear + 1 : currentYear;
         
-        const lastDayOfNextMonth = new Date(nextYear, adjustedMonth + 1, 0);
-        const lastDayNext = lastDayOfNextMonth.getDate();
-        
-        for (let day = lastDayNext; day >= 1; day--) {
-          const checkDate = new Date(nextYear, adjustedMonth, day);
-          if (checkDate.getDay() === 4) { // 4 = Thursday
-            lastThursday = checkDate;
+        for (let day = 31; day >= 1; day--) {
+          const testDate = new Date(Date.UTC(nextYear, nextMonth, day));
+          if (testDate.getUTCMonth() === nextMonth && testDate.getUTCDay() === 4) {
+            lastThursday = testDate;
             break;
           }
         }
       }
       
-      expiryDateISO = lastThursday!.toISOString().split('T')[0];
-      isExpiryToday = expiryDateISO === today.toISOString().split('T')[0];
+      if (lastThursday) {
+        expiryDateISO = lastThursday.toISOString().split('T')[0];
+        daysToExpiry = Math.ceil((lastThursday.getTime() - istTime.getTime()) / (1000 * 60 * 60 * 24));
+      } else {
+        // Fallback to 28 days from now
+        const fallbackDate = new Date(istTime);
+        fallbackDate.setUTCDate(istTime.getUTCDate() + 28);
+        expiryDateISO = fallbackDate.toISOString().split('T')[0];
+        daysToExpiry = 28;
+      }
+      
+      isExpiryToday = daysToExpiry === 0 && !marketClosed;
       
       if (isExpiryToday) {
         expiryDate = `TODAY (${lastThursday!.toLocaleDateString('en-GB', { 
@@ -166,59 +310,54 @@ serve(async (req) => {
 
     // Determine lot size (as per NSE Circular - updated Nov 2025)
     let lotSize = 500;
-    let upstoxSymbol = '';
+    let nseSymbol = '';
     if (symbol === 'NIFTY' || symbol === '^NSEI') {
       lotSize = 75;
-      upstoxSymbol = 'NSE_INDEX|Nifty 50';
+      nseSymbol = 'NIFTY';
     } else if (symbol === 'BANKNIFTY' || symbol === '^NSEBANK') {
       lotSize = 35;
-      upstoxSymbol = 'NSE_INDEX|Nifty Bank';
+      nseSymbol = 'BANKNIFTY';
     } else if (symbol === 'FINNIFTY') {
       lotSize = 40;
-      upstoxSymbol = 'NSE_INDEX|Nifty Fin Service';
+      nseSymbol = 'FINNIFTY';
     } else if (symbol === 'MIDCPNIFTY') {
       lotSize = 140;
-      upstoxSymbol = 'NSE_INDEX|NIFTY MID SELECT';
+      nseSymbol = 'MIDCPNIFTY';
     }
 
-    // Attempt to fetch real option premium from Upstox
-    let realPremium: number | null = null;
-    let usedUpstoxData = false;
-    let strikePrice = Math.round(analysis.current / 50) * 50; // ATM strike for index
+    // Try to fetch real option chain data from NSE
+    let realCallPremium: number | null = null;
+    let realPutPremium: number | null = null;
+    let dataSource = 'AI_ESTIMATED';
     
-    if (type === 'index' && upstoxSymbol) {
-      console.log('Attempting to fetch Upstox option chain data');
-      try {
-        const upstoxApiKey = Deno.env.get('UPSTOX_API_KEY');
-        const upstoxApiSecret = Deno.env.get('UPSTOX_API_SECRET');
+    if (type === 'index' && nseSymbol) {
+      console.log(`Fetching real option chain data from NSE for ${nseSymbol}`);
+      const optionChainData = await fetchNSEOptionChain(nseSymbol);
+      
+      if (optionChainData) {
+        realCallPremium = extractATMPremium(optionChainData, analysis.current, 'CE');
+        realPutPremium = extractATMPremium(optionChainData, analysis.current, 'PE');
         
-        if (upstoxApiKey && upstoxApiSecret) {
-          // Note: This is a simplified implementation
-          // In production, you'd need to:
-          // 1. Authenticate with Upstox OAuth
-          // 2. Get proper access token
-          // 3. Call option chain API with correct parameters
-          // For now, we'll fall back to AI estimation
-          console.log('Upstox credentials found but full OAuth flow needed');
+        if (realCallPremium && realPutPremium) {
+          dataSource = 'NSE_LIVE';
+          console.log(`Successfully fetched NSE data - Call: ₹${realCallPremium}, Put: ₹${realPutPremium}`);
         }
-      } catch (error) {
-        console.error('Upstox API error:', error);
       }
     }
 
-    // Use AI prediction with Yahoo Finance data
-    console.log('Generating AI prediction with Yahoo Finance data');
+    // Use AI prediction with real or estimated premium data
+    console.log(`Generating AI prediction with ${dataSource === 'NSE_LIVE' ? 'real NSE' : 'estimated'} premium data`);
     
     const GOOGLE_GEMINI_API_KEY = Deno.env.get('GOOGLE_GEMINI_API_KEY');
     if (!GOOGLE_GEMINI_API_KEY) {
       throw new Error('GOOGLE_GEMINI_API_KEY is not configured');
     }
     
-    // Calculate realistic premium ranges based on option type and underlying
+    // Calculate realistic premium ranges
     let expectedPremiumMin, expectedPremiumMax, expectedPremiumMid;
     
     if (type === 'index') {
-      // Index options have absolute premium ranges
+      // Index options - base ranges before time value adjustment
       if (symbol === 'NIFTY' || symbol === '^NSEI') {
         expectedPremiumMin = 60;
         expectedPremiumMax = 150;
@@ -248,19 +387,48 @@ serve(async (req) => {
       expectedPremiumMid = Math.round(analysis.current * 0.012);
     }
     
-    const systemPrompt = `You are an options trading expert. Provide SIMPLE INTRADAY options strategies with REALISTIC PREMIUMS.
+    // Apply time value multiplier if using estimated premiums
+    if (dataSource === 'AI_ESTIMATED') {
+      const estimated = calculateEstimatedPremium(expectedPremiumMin, expectedPremiumMax, daysToExpiry);
+      expectedPremiumMin = estimated.min;
+      expectedPremiumMax = estimated.max;
+      expectedPremiumMid = estimated.mid;
+      console.log(`Applied time value multiplier for ${daysToExpiry} days: ₹${expectedPremiumMin}-${expectedPremiumMax}`);
+    }
     
+    // Build premium context for AI
+    const premiumContext = dataSource === 'NSE_LIVE' && realCallPremium && realPutPremium
+      ? `REAL OPTION PREMIUMS (from NSE Live Data):
+- ATM Call Premium: ₹${realCallPremium} per lot
+- ATM Put Premium: ₹${realPutPremium} per lot
+- Data Source: Live NSE Option Chain
+- Days to Expiry: ${daysToExpiry}
+
+Use these REAL premiums for your recommendation. Suggest strikes near ATM based on market view.`
+      : `ESTIMATED PREMIUMS (NSE data unavailable):
+- Premium Range: ₹${expectedPremiumMin}-${expectedPremiumMax} per lot
+- ATM Premium: Around ₹${expectedPremiumMid} per lot
+- Days to Expiry: ${daysToExpiry}
+- Time Value: ${daysToExpiry >= 5 ? 'High' : daysToExpiry >= 2 ? 'Medium' : 'Low'} (${daysToExpiry} days remaining)
+
+Use realistic estimated premiums based on time value principles.`;
+    
+    const systemPrompt = `You are an options trading expert analyzing ${dataSource === 'NSE_LIVE' ? 'REAL' : 'ESTIMATED'} market data. Provide SIMPLE INTRADAY options strategies with REALISTIC PREMIUMS.
+    
+MARKET DATA:
+- Current Price: ₹${analysis.current}
+- Expiry: ${expiryDate}
+- Lot Size: ${lotSize}
+${isExpiryToday ? '- ⚠️ TODAY IS EXPIRY DAY - Intraday only, exit before 3:15 PM IST' : `- Days to Expiry: ${daysToExpiry}`}
+
+${premiumContext}
+
 RULES:
 - BULLISH: Recommend BUY CALL only
 - BEARISH: Recommend BUY PUT only
-- Current Price: ₹${analysis.current}
-- Premium Range: ₹${expectedPremiumMin}-${expectedPremiumMax} per lot
-- ATM Premium: Around ₹${expectedPremiumMid} per lot
-- Expiry: ${expiryDate}
-- Lot Size: ${lotSize}
-${isExpiryToday ? '- CRITICAL: TODAY IS EXPIRY - Intraday only, exit before 3:15 PM' : ''}
 - Provide SPECIFIC entry, target, and stop loss prices
-- DO NOT use hard-coded generic premiums - use the ranges provided above`;
+- Consider time decay (theta) impact given ${daysToExpiry} days to expiry
+${dataSource === 'NSE_LIVE' ? '- Use REAL premiums from NSE data' : '- Use ESTIMATED premiums with realistic time value'}`;
 
     const userPrompt = `Analyze ${name} (${symbol}). Current Price: ₹${analysis.current}, RSI: ${analysis.rsi}, Trend: ${analysis.trend}
 
@@ -269,10 +437,7 @@ Overall Sentiment: ${newsSentiment.overall}
 Summary: ${newsSentiment.summary}
 Articles: ${JSON.stringify(newsSentiment.articles)}
 
-CRITICAL PREMIUM GUIDELINES:
-- ${type === 'index' ? `Index Option Premium: ₹${expectedPremiumMin}-${expectedPremiumMax}` : `Stock Option Premium: ₹${expectedPremiumMin}-${expectedPremiumMax} (0.5-2% of stock price)`}
-- ATM Premium: Around ₹${expectedPremiumMid}
-${isExpiryToday ? '- ALERT: TODAY IS EXPIRY DAY - Exit all positions before 3:15 PM' : ''}
+${isExpiryToday ? '⚠️ ALERT: TODAY IS EXPIRY DAY - Exit all positions before 3:15 PM IST' : ''}
 
 Provide realistic options strategy:
 {
@@ -282,7 +447,7 @@ Provide realistic options strategy:
   "expiryDate": "${expiryDate}",
   "lotSize": ${lotSize},
   "premium": {
-    "buyLeg": <MUST be between ₹${expectedPremiumMin}-${expectedPremiumMax}, typically around ₹${expectedPremiumMid} for ATM>,
+    "buyLeg": <${dataSource === 'NSE_LIVE' ? `Use real premium: Call ₹${realCallPremium}, Put ₹${realPutPremium}` : `Between ₹${expectedPremiumMin}-${expectedPremiumMax}, around ₹${expectedPremiumMid} for ATM`}>,
     "sellLeg": null,
     "netCost": <same as buyLeg>,
     "targetPremium": <buyLeg + 20-50% gain, realistic for intraday>,
@@ -415,9 +580,19 @@ Provide realistic options strategy:
         success: true, 
         prediction, 
         historicalData,
-        isLiveData: usedUpstoxData,
-        premiumSource: usedUpstoxData ? "upstox-live" : "ai-estimate",
-        isExpiryToday
+        dataSource,
+        realPremiums: dataSource === 'NSE_LIVE' && realCallPremium && realPutPremium ? {
+          callPremium: realCallPremium,
+          putPremium: realPutPremium,
+        } : null,
+        expiryInfo: {
+          date: expiryDateISO,
+          formatted: expiryDate,
+          daysToExpiry,
+          isExpiryToday,
+        },
+        isLiveData: dataSource === 'NSE_LIVE',
+        premiumSource: dataSource === 'NSE_LIVE' ? "nse-live" : "ai-estimate",
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
