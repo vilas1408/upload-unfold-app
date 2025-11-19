@@ -117,22 +117,24 @@ function extractATMPremium(optionChainData: any, currentPrice: number, optionTyp
         Math.abs(a.strikePrice - currentPrice) - Math.abs(b.strikePrice - currentPrice)
       );
       const nearestData = sortedRecords[0];
-      const premium = optionType === 'CE' ? nearestData.CE?.ltp : nearestData.PE?.ltp;
-      return premium || null;
+      const nearestLeg = optionType === 'CE' ? nearestData.CE : nearestData.PE;
+      const premium = nearestLeg?.ltp ?? nearestLeg?.lastPrice ?? null;
+      return premium;
     }
     
     // Log NSE data for debugging
+    const leg = atmData[optionType];
     console.log(`NSE Data for ${optionType} at strike ${atmStrike}:`, {
-      ltp: atmData[optionType]?.ltp,
-      lastPrice: atmData[optionType]?.lastPrice,
+      ltp: leg?.ltp,
+      lastPrice: leg?.lastPrice,
       strikePrice: atmData.strikePrice
     });
     
-    // Extract premium based on option type (use ltp - Last Traded Price)
-    const premium = optionType === 'CE' ? atmData.CE?.ltp : atmData.PE?.ltp;
+    // Extract premium (use ltp first, fallback to lastPrice)
+    const premium = leg?.ltp ?? leg?.lastPrice ?? null;
     
     console.log(`${optionType} ATM premium at strike ${atmStrike}: ₹${premium}`);
-    return premium || null;
+    return premium;
   } catch (error) {
     console.error('Error extracting ATM premium:', error);
     return null;
@@ -361,9 +363,12 @@ serve(async (req) => {
       realCallPremium = extractATMPremium(optionChainData, analysis.current, 'CE');
       realPutPremium = extractATMPremium(optionChainData, analysis.current, 'PE');
       
-      if (realCallPremium && realPutPremium) {
+      if (realCallPremium || realPutPremium) {
         dataSource = 'NSE_LIVE';
-        console.log(`Successfully fetched NSE data - Call: ₹${realCallPremium}, Put: ₹${realPutPremium}`);
+        console.log(
+          `Successfully fetched NSE data - Call: ₹${realCallPremium ?? 'N/A'}, ` +
+          `Put: ₹${realPutPremium ?? 'N/A'}`
+        );
       }
     }
 
@@ -419,21 +424,39 @@ serve(async (req) => {
     }
     
     // Build premium context for AI
-    const premiumContext = dataSource === 'NSE_LIVE' && realCallPremium && realPutPremium
-      ? `REAL OPTION PREMIUMS (from NSE Live Data):
+    let premiumContext: string;
+    
+    if (dataSource === 'NSE_LIVE' && realCallPremium && realPutPremium) {
+      premiumContext = `REAL OPTION PREMIUMS (from NSE Live Data):
 - ATM Call Premium: ₹${realCallPremium} per lot
 - ATM Put Premium: ₹${realPutPremium} per lot
 - Data Source: Live NSE Option Chain
 - Days to Expiry: ${daysToExpiry}
 
-Use these REAL premiums for your recommendation. Suggest strikes near ATM based on market view.`
-      : `ESTIMATED PREMIUMS (NSE data unavailable):
+Use these REAL premiums for your recommendation. Suggest strikes near ATM based on market view.`;
+    } else if (dataSource === 'NSE_LIVE' && realCallPremium) {
+      premiumContext = `REAL OPTION PREMIUM (from NSE Live Data):
+- ATM Call Premium: ₹${realCallPremium} per lot
+- Data Source: Live NSE Option Chain (Call side)
+- Days to Expiry: ${daysToExpiry}
+
+Use this REAL CALL premium for your recommendation.`;
+    } else if (dataSource === 'NSE_LIVE' && realPutPremium) {
+      premiumContext = `REAL OPTION PREMIUM (from NSE Live Data):
+- ATM Put Premium: ₹${realPutPremium} per lot
+- Data Source: Live NSE Option Chain (Put side)
+- Days to Expiry: ${daysToExpiry}
+
+Use this REAL PUT premium for your recommendation.`;
+    } else {
+      premiumContext = `ESTIMATED PREMIUMS (NSE data unavailable):
 - Premium Range: ₹${expectedPremiumMin}-${expectedPremiumMax} per lot
 - ATM Premium: Around ₹${expectedPremiumMid} per lot
 - Days to Expiry: ${daysToExpiry}
 - Time Value: ${daysToExpiry >= 5 ? 'High' : daysToExpiry >= 2 ? 'Medium' : 'Low'} (${daysToExpiry} days remaining)
 
 Use realistic estimated premiums based on time value principles.`;
+    }
     
     const systemPrompt = `You are an options trading expert analyzing ${dataSource === 'NSE_LIVE' ? 'REAL' : 'ESTIMATED'} market data. Provide SIMPLE INTRADAY options strategies with REALISTIC PREMIUMS.
     
@@ -562,6 +585,21 @@ Provide realistic options strategy:
       console.error('JSON parse error:', parseError);
       console.error('Content to parse:', jsonMatch[0]);
       throw new Error('Invalid JSON in AI response');
+    }
+    
+    // Override with real NSE premium if available
+    if (dataSource === 'NSE_LIVE' && realCallPremium && prediction.optionType === 'CALL') {
+      prediction.premium = prediction.premium || {} as any;
+      prediction.premium.buyLeg = realCallPremium;
+      prediction.premium.netCost = realCallPremium;
+      prediction.totalInvestment = realCallPremium * prediction.lotSize;
+      console.log(`Overriding entry premium with REAL NSE call premium: ₹${realCallPremium}`);
+    } else if (dataSource === 'NSE_LIVE' && realPutPremium && prediction.optionType === 'PUT') {
+      prediction.premium = prediction.premium || {} as any;
+      prediction.premium.buyLeg = realPutPremium;
+      prediction.premium.netCost = realPutPremium;
+      prediction.totalInvestment = realPutPremium * prediction.lotSize;
+      console.log(`Overriding entry premium with REAL NSE put premium: ₹${realPutPremium}`);
     }
     
     // Only validate AI estimates, NEVER validate real NSE data
