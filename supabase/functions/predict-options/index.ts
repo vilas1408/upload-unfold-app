@@ -51,15 +51,20 @@ async function getNSECookies(): Promise<string> {
 }
 
 // Fetch option chain data from NSE
-async function fetchNSEOptionChain(symbol: string): Promise<any> {
+async function fetchNSEOptionChain(symbol: string, type: 'index' | 'share'): Promise<any> {
   try {
-    console.log('Fetching NSE option chain for:', symbol);
+    console.log(`Fetching NSE option chain for ${type}:`, symbol);
     
     // Get fresh cookies
     const cookies = await getNSECookies();
     
+    // Use different API endpoint based on type
+    const baseUrl = type === 'index' 
+      ? 'https://www.nseindia.com/api/option-chain-indices'
+      : 'https://www.nseindia.com/api/option-chain-equities';
+    
     // Fetch option chain data
-    const url = `${NSE_OPTION_CHAIN_URL}?symbol=${symbol}`;
+    const url = `${baseUrl}?symbol=${symbol}`;
     const response = await fetch(url, {
       headers: {
         ...NSE_HEADERS,
@@ -88,9 +93,18 @@ function extractATMPremium(optionChainData: any, currentPrice: number, optionTyp
     
     if (records.length === 0) return null;
     
-    // Find ATM strike (nearest to current price)
-    // Round to nearest 50 for Nifty, 100 for BankNifty
-    const strikeInterval = currentPrice > 30000 ? 100 : 50;
+    // Find ATM strike - different intervals for indices vs stocks
+    let strikeInterval: number;
+    if (currentPrice > 30000) {
+      strikeInterval = 100; // Bank Nifty, high-priced indices
+    } else if (currentPrice > 10000) {
+      strikeInterval = 50; // Nifty
+    } else if (currentPrice > 1000) {
+      strikeInterval = 10; // Reliance (₹1520), most stocks
+    } else {
+      strikeInterval = 5; // Low-priced stocks
+    }
+    
     const atmStrike = Math.round(currentPrice / strikeInterval) * strikeInterval;
     
     // Find the option data for ATM strike
@@ -337,18 +351,19 @@ serve(async (req) => {
     let realPutPremium: number | null = null;
     let dataSource = 'AI_ESTIMATED';
     
-    if (type === 'index' && nseSymbol) {
-      console.log(`Fetching real option chain data from NSE for ${nseSymbol}`);
-      const optionChainData = await fetchNSEOptionChain(nseSymbol);
+    // Use mapped NSE symbol for indices, original symbol for stocks
+    const nseSymbolToFetch = nseSymbol || symbol;
+    
+    console.log(`Fetching real option chain data from NSE for ${nseSymbolToFetch}`);
+    const optionChainData = await fetchNSEOptionChain(nseSymbolToFetch, type);
+    
+    if (optionChainData) {
+      realCallPremium = extractATMPremium(optionChainData, analysis.current, 'CE');
+      realPutPremium = extractATMPremium(optionChainData, analysis.current, 'PE');
       
-      if (optionChainData) {
-        realCallPremium = extractATMPremium(optionChainData, analysis.current, 'CE');
-        realPutPremium = extractATMPremium(optionChainData, analysis.current, 'PE');
-        
-        if (realCallPremium && realPutPremium) {
-          dataSource = 'NSE_LIVE';
-          console.log(`Successfully fetched NSE data - Call: ₹${realCallPremium}, Put: ₹${realPutPremium}`);
-        }
+      if (realCallPremium && realPutPremium) {
+        dataSource = 'NSE_LIVE';
+        console.log(`Successfully fetched NSE data - Call: ₹${realCallPremium}, Put: ₹${realPutPremium}`);
       }
     }
 
