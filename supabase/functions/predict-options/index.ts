@@ -50,6 +50,78 @@ async function getNSECookies(): Promise<string> {
   }
 }
 
+// Fetch lot size from NiftyTrader website
+async function fetchLotSizeFromNiftyTrader(symbol: string): Promise<number | null> {
+  try {
+    console.log(`Fetching lot size from NiftyTrader for: ${symbol}`);
+    
+    const response = await fetch('https://www.niftytrader.in/nse-fo-lot-size', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+    });
+
+    if (!response.ok) {
+      console.error(`NiftyTrader returned status ${response.status}`);
+      return null;
+    }
+
+    const html = await response.text();
+    
+    // Find the table row containing the symbol
+    const symbolPattern = new RegExp(`>${symbol}<`, 'i');
+    const symbolMatch = html.match(symbolPattern);
+    
+    if (!symbolMatch) {
+      console.log(`Symbol ${symbol} not found in NiftyTrader data`);
+      return null;
+    }
+
+    // Extract the row containing this symbol
+    const symbolIndex = symbolMatch.index!;
+    const rowStart = html.lastIndexOf('<tr', symbolIndex);
+    const rowEnd = html.indexOf('</tr>', symbolIndex);
+    
+    if (rowStart === -1 || rowEnd === -1) {
+      console.log(`Could not extract row for ${symbol}`);
+      return null;
+    }
+
+    const row = html.substring(rowStart, rowEnd);
+    
+    // Extract all <td> cells from the row
+    const cellPattern = /<td[^>]*>(.*?)<\/td>/gi;
+    const cells: string[] = [];
+    let cellMatch;
+    
+    while ((cellMatch = cellPattern.exec(row)) !== null) {
+      // Remove HTML tags and clean the text
+      const cellText = cellMatch[1]
+        .replace(/<[^>]+>/g, '') // Remove all HTML tags
+        .replace(/,/g, '')        // Remove commas
+        .trim();
+      cells.push(cellText);
+    }
+
+    // Lot size is typically in the second or third column after symbol
+    // Try to find a numeric value that looks like a lot size (50-5000 range)
+    for (const cell of cells) {
+      const lotSize = parseInt(cell, 10);
+      if (!isNaN(lotSize) && lotSize >= 10 && lotSize <= 10000) {
+        console.log(`✓ Found lot size from NiftyTrader for ${symbol}: ${lotSize} units`);
+        return lotSize;
+      }
+    }
+
+    console.log(`Could not parse lot size from cells: ${cells.join(', ')}`);
+    return null;
+  } catch (error) {
+    console.error('Error fetching lot size from NiftyTrader:', error);
+    return null;
+  }
+}
+
 // Fetch option chain data from NSE
 async function fetchNSEOptionChain(symbol: string, type: 'index' | 'share'): Promise<any> {
   try {
@@ -331,21 +403,43 @@ serve(async (req) => {
       }
     }
 
-    // Determine lot size (as per NSE Circular - updated Nov 2025)
-    let lotSize = 500;
+    // Determine lot size
+    let lotSize = 500; // Default fallback
     let nseSymbol = '';
+    let lotSizeSource = 'default';
+    
+    // Step 1: Set index-specific lot sizes (these are stable and official)
     if (symbol === 'NIFTY' || symbol === '^NSEI') {
       lotSize = 75;
       nseSymbol = 'NIFTY';
+      lotSizeSource = 'index-config';
     } else if (symbol === 'BANKNIFTY' || symbol === '^NSEBANK') {
       lotSize = 35;
       nseSymbol = 'BANKNIFTY';
+      lotSizeSource = 'index-config';
     } else if (symbol === 'FINNIFTY') {
       lotSize = 40;
       nseSymbol = 'FINNIFTY';
+      lotSizeSource = 'index-config';
     } else if (symbol === 'MIDCPNIFTY') {
       lotSize = 140;
       nseSymbol = 'MIDCPNIFTY';
+      lotSizeSource = 'index-config';
+    }
+    
+    console.log(`Initial lot size for ${symbol} (${type}): ${lotSize} units (source: ${lotSizeSource})`);
+    
+    // Step 2: For stocks, fetch real-time lot size from NiftyTrader
+    if (type === 'share') {
+      const niftyTraderLotSize = await fetchLotSizeFromNiftyTrader(symbol);
+      if (niftyTraderLotSize && niftyTraderLotSize > 0) {
+        lotSize = niftyTraderLotSize;
+        lotSizeSource = 'niftytrader-live';
+        console.log(`✓ Lot size updated from NiftyTrader: ${lotSize} units`);
+      } else {
+        console.log(`⚠️ Could not fetch lot size from NiftyTrader, using fallback: ${lotSize} units`);
+        lotSizeSource = 'fallback';
+      }
     }
 
     // Try to fetch real option chain data from NSE
@@ -640,6 +734,17 @@ Provide realistic options strategy:
     
     // Ensure totalInvestment is recalculated with corrected premium
     prediction.totalInvestment = prediction.premium.buyLeg * prediction.lotSize;
+    
+    // Final confirmation log
+    console.log(`
+📊 FINAL LOT SIZE DETERMINATION:
+  Symbol: ${symbol}
+  Type: ${type}
+  Lot Size: ${lotSize} units
+  Source: ${lotSizeSource}
+  Premium Source: ${dataSource}
+  Total Investment: ₹${prediction.totalInvestment}
+`);
 
     return new Response(
       JSON.stringify({ 
@@ -659,6 +764,7 @@ Provide realistic options strategy:
         },
         isLiveData: dataSource === 'NSE_LIVE',
         premiumSource: dataSource === 'NSE_LIVE' ? "nse-live" : "ai-estimate",
+        lotSizeSource,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
