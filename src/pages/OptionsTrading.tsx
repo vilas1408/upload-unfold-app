@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import AccuracyDashboard from "@/components/AccuracyDashboard";
 import OptionsSelector from "@/components/OptionsSelector";
 import OptionsPredictionDisplay from "@/components/OptionsPredictionDisplay";
 
@@ -102,6 +103,8 @@ const OptionsTrading = () => {
             Get live option chain data with real premiums, Greeks, and market depth
           </p>
         </div>
+        
+        <AccuracyDashboard />
         
         <OptionsSelector onSelectOption={handleSelectOption} />
         
