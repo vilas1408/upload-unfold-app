@@ -14,6 +14,237 @@ export type Database = {
   }
   public: {
     Tables: {
+      accuracy_metrics: {
+        Row: {
+          accuracy_rate: number | null
+          avg_loss_percent: number | null
+          avg_profit_percent: number | null
+          bearish_trend_accuracy: number | null
+          best_performing_symbol: string | null
+          bullish_trend_accuracy: number | null
+          call_success_rate: number | null
+          failed_predictions: number | null
+          id: number
+          neutral_trend_accuracy: number | null
+          pending_predictions: number | null
+          period: string
+          period_end: string
+          period_start: string
+          put_success_rate: number | null
+          successful_predictions: number | null
+          total_predictions: number | null
+          updated_at: string | null
+          win_rate: number | null
+          worst_performing_symbol: string | null
+        }
+        Insert: {
+          accuracy_rate?: number | null
+          avg_loss_percent?: number | null
+          avg_profit_percent?: number | null
+          bearish_trend_accuracy?: number | null
+          best_performing_symbol?: string | null
+          bullish_trend_accuracy?: number | null
+          call_success_rate?: number | null
+          failed_predictions?: number | null
+          id?: number
+          neutral_trend_accuracy?: number | null
+          pending_predictions?: number | null
+          period: string
+          period_end: string
+          period_start: string
+          put_success_rate?: number | null
+          successful_predictions?: number | null
+          total_predictions?: number | null
+          updated_at?: string | null
+          win_rate?: number | null
+          worst_performing_symbol?: string | null
+        }
+        Update: {
+          accuracy_rate?: number | null
+          avg_loss_percent?: number | null
+          avg_profit_percent?: number | null
+          bearish_trend_accuracy?: number | null
+          best_performing_symbol?: string | null
+          bullish_trend_accuracy?: number | null
+          call_success_rate?: number | null
+          failed_predictions?: number | null
+          id?: number
+          neutral_trend_accuracy?: number | null
+          pending_predictions?: number | null
+          period?: string
+          period_end?: string
+          period_start?: string
+          put_success_rate?: number | null
+          successful_predictions?: number | null
+          total_predictions?: number | null
+          updated_at?: string | null
+          win_rate?: number | null
+          worst_performing_symbol?: string | null
+        }
+        Relationships: []
+      }
+      option_premiums: {
+        Row: {
+          ask_price: number | null
+          bid_price: number | null
+          contract_type: string
+          days_to_expiry: number
+          delta: number | null
+          expiry_date: string
+          gamma: number | null
+          id: number
+          implied_volatility: number | null
+          open_interest: number | null
+          option_type: string
+          premium: number
+          strike_price: number
+          symbol: string
+          theta: number | null
+          timestamp: string | null
+          underlying_price: number
+          vega: number | null
+          volume: number | null
+        }
+        Insert: {
+          ask_price?: number | null
+          bid_price?: number | null
+          contract_type: string
+          days_to_expiry: number
+          delta?: number | null
+          expiry_date: string
+          gamma?: number | null
+          id?: number
+          implied_volatility?: number | null
+          open_interest?: number | null
+          option_type: string
+          premium: number
+          strike_price: number
+          symbol: string
+          theta?: number | null
+          timestamp?: string | null
+          underlying_price: number
+          vega?: number | null
+          volume?: number | null
+        }
+        Update: {
+          ask_price?: number | null
+          bid_price?: number | null
+          contract_type?: string
+          days_to_expiry?: number
+          delta?: number | null
+          expiry_date?: string
+          gamma?: number | null
+          id?: number
+          implied_volatility?: number | null
+          open_interest?: number | null
+          option_type?: string
+          premium?: number
+          strike_price?: number
+          symbol?: string
+          theta?: number | null
+          timestamp?: string | null
+          underlying_price?: number
+          vega?: number | null
+          volume?: number | null
+        }
+        Relationships: []
+      }
+      prediction_tracking: {
+        Row: {
+          actual_entry_premium: number | null
+          actual_exit_premium: number | null
+          actual_max_premium: number | null
+          actual_min_premium: number | null
+          direction_correct: boolean | null
+          exit_reason: string | null
+          expiry_date: string | null
+          id: number
+          iv_rank_at_prediction: number | null
+          option_type: string
+          outcome_recorded_at: string | null
+          pnl_amount: number | null
+          pnl_percent: number | null
+          predicted_at: string | null
+          predicted_direction: string | null
+          predicted_entry_premium: number | null
+          predicted_sl_premium: number | null
+          predicted_strategy: string | null
+          predicted_strike: number | null
+          predicted_target_premium: number | null
+          prediction_accuracy: number | null
+          prediction_json: Json
+          rsi_at_prediction: number | null
+          sl_hit: boolean | null
+          symbol: string
+          target_hit: boolean | null
+          technical_score: number | null
+          tracked_until: string | null
+          trend_at_prediction: string | null
+        }
+        Insert: {
+          actual_entry_premium?: number | null
+          actual_exit_premium?: number | null
+          actual_max_premium?: number | null
+          actual_min_premium?: number | null
+          direction_correct?: boolean | null
+          exit_reason?: string | null
+          expiry_date?: string | null
+          id?: number
+          iv_rank_at_prediction?: number | null
+          option_type: string
+          outcome_recorded_at?: string | null
+          pnl_amount?: number | null
+          pnl_percent?: number | null
+          predicted_at?: string | null
+          predicted_direction?: string | null
+          predicted_entry_premium?: number | null
+          predicted_sl_premium?: number | null
+          predicted_strategy?: string | null
+          predicted_strike?: number | null
+          predicted_target_premium?: number | null
+          prediction_accuracy?: number | null
+          prediction_json: Json
+          rsi_at_prediction?: number | null
+          sl_hit?: boolean | null
+          symbol: string
+          target_hit?: boolean | null
+          technical_score?: number | null
+          tracked_until?: string | null
+          trend_at_prediction?: string | null
+        }
+        Update: {
+          actual_entry_premium?: number | null
+          actual_exit_premium?: number | null
+          actual_max_premium?: number | null
+          actual_min_premium?: number | null
+          direction_correct?: boolean | null
+          exit_reason?: string | null
+          expiry_date?: string | null
+          id?: number
+          iv_rank_at_prediction?: number | null
+          option_type?: string
+          outcome_recorded_at?: string | null
+          pnl_amount?: number | null
+          pnl_percent?: number | null
+          predicted_at?: string | null
+          predicted_direction?: string | null
+          predicted_entry_premium?: number | null
+          predicted_sl_premium?: number | null
+          predicted_strategy?: string | null
+          predicted_strike?: number | null
+          predicted_target_premium?: number | null
+          prediction_accuracy?: number | null
+          prediction_json?: Json
+          rsi_at_prediction?: number | null
+          sl_hit?: boolean | null
+          symbol?: string
+          target_hit?: boolean | null
+          technical_score?: number | null
+          tracked_until?: string | null
+          trend_at_prediction?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           approved_at: string | null
@@ -158,6 +389,48 @@ export type Database = {
           token_expiry?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      volatility_metrics: {
+        Row: {
+          date: string
+          historical_volatility_30d: number | null
+          historical_volatility_7d: number | null
+          id: number
+          implied_volatility_avg: number | null
+          iv_percentile: number | null
+          iv_rank: number | null
+          symbol: string
+          volume_avg_20d: number | null
+          volume_ratio: number | null
+          volume_today: number | null
+        }
+        Insert: {
+          date: string
+          historical_volatility_30d?: number | null
+          historical_volatility_7d?: number | null
+          id?: number
+          implied_volatility_avg?: number | null
+          iv_percentile?: number | null
+          iv_rank?: number | null
+          symbol: string
+          volume_avg_20d?: number | null
+          volume_ratio?: number | null
+          volume_today?: number | null
+        }
+        Update: {
+          date?: string
+          historical_volatility_30d?: number | null
+          historical_volatility_7d?: number | null
+          id?: number
+          implied_volatility_avg?: number | null
+          iv_percentile?: number | null
+          iv_rank?: number | null
+          symbol?: string
+          volume_avg_20d?: number | null
+          volume_ratio?: number | null
+          volume_today?: number | null
         }
         Relationships: []
       }

@@ -569,12 +569,35 @@ RULES:
 - Consider time decay (theta) impact given ${daysToExpiry} days to expiry
 ${dataSource === 'NSE_LIVE' ? '- Use REAL premiums from NSE data' : '- Use ESTIMATED premiums with realistic time value'}`;
 
-    const userPrompt = `Analyze ${name} (${symbol}). Current Price: ₹${analysis.current}, RSI: ${analysis.rsi}, Trend: ${analysis.trend}
+    const userPrompt = `Analyze ${name} (${symbol}). 
 
-News Sentiment Analysis:
-Overall Sentiment: ${newsSentiment.overall}
-Summary: ${newsSentiment.summary}
-Articles: ${JSON.stringify(newsSentiment.articles)}
+TECHNICAL ANALYSIS (Multi-Indicator):
+- Current Price: ₹${analysis.current}
+- RSI: ${analysis.rsi} (${analysis.rsi > 70 ? 'Overbought' : analysis.rsi < 30 ? 'Oversold' : 'Neutral'})
+- SMA20: ₹${analysis.sma20}
+- EMA12: ₹${analysis.ema12}, EMA26: ₹${analysis.ema26}, EMA50: ₹${analysis.ema50}
+
+MACD ANALYSIS:
+- MACD: ${analysis.macd} | Signal: ${analysis.macdSignal} | Histogram: ${analysis.macdHistogram}
+- MACD Trend: ${analysis.macdTrend}
+
+BOLLINGER BANDS:
+- Upper: ₹${analysis.upperBand} | Lower: ₹${analysis.lowerBand}
+- BB Position: ${analysis.bbPosition}% (${analysis.bbSignal})
+
+VOLUME & VOLATILITY:
+- Volume Ratio: ${analysis.volumeRatio}x (${analysis.volumeSignal})
+- ATR: ₹${analysis.atr} (${analysis.atrPercent}% of price)
+- Historical Volatility (7D): ${analysis.hv7d}%
+- Historical Volatility (30D): ${analysis.hv30d}%
+
+SUPPORT & RESISTANCE:
+- Support: ₹${analysis.support}
+- Resistance: ₹${analysis.resistance}
+
+OVERALL TREND: ${analysis.trend} (Score: ${analysis.trendScore}/10)
+
+NEWS SENTIMENT: ${newsSentiment.overall} - ${newsSentiment.summary}
 
 ${isExpiryToday ? '⚠️ ALERT: TODAY IS EXPIRY DAY - Exit all positions before 3:15 PM IST' : ''}
 
@@ -609,7 +632,7 @@ Provide realistic options strategy:
   "breakeven": <strike ± premium>,
   "ivRank": <0-100>,
   "greeks": {"delta": <0.4-0.6>, "gamma": <0.01-0.05>, "theta": <-10 to -50>, "vega": <50-150>},
-  "reasoning": "Brief analysis (2-3 lines) including news sentiment impact",
+  "reasoning": "Brief analysis (2-3 lines) including news sentiment impact and technical factors",
   "riskLevel": "Low|Medium|High",
   "timeFrame": "Intraday (Exit before 3:15 PM)",
   "technicalScore": <0-100>,
@@ -735,6 +758,57 @@ Provide realistic options strategy:
     // Ensure totalInvestment is recalculated with corrected premium
     prediction.totalInvestment = prediction.premium.buyLeg * prediction.lotSize;
     
+    // Store premium snapshot for historical tracking (if NSE live data available)
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    
+    if (supabaseUrl && supabaseKey && dataSource === 'NSE_LIVE') {
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      const premium = prediction.optionType === 'CALL' ? realCallPremium : realPutPremium;
+      
+      if (premium) {
+        try {
+          await supabase.from('option_premiums').insert({
+            symbol,
+            option_type: type,
+            strike_price: prediction.strikePrice,
+            contract_type: prediction.optionType === 'CALL' ? 'CE' : 'PE',
+            premium,
+            underlying_price: analysis.current,
+            days_to_expiry: daysToExpiry,
+            expiry_date: expiryDateISO,
+            implied_volatility: calculateImpliedVolatility(premium, analysis.current, prediction.strikePrice, daysToExpiry, prediction.optionType === 'CALL' ? 'CE' : 'PE')
+          });
+          console.log('✓ Premium snapshot stored for historical tracking');
+        } catch (error) {
+          console.error('Failed to store premium snapshot:', error);
+        }
+      }
+      
+      // Track prediction for backtesting
+      try {
+        await supabase.from('prediction_tracking').insert({
+          symbol,
+          option_type: type,
+          prediction_json: prediction,
+          predicted_strategy: prediction.strategy,
+          predicted_direction: prediction.optionType,
+          predicted_strike: prediction.strikePrice,
+          predicted_entry_premium: prediction.premium.buyLeg,
+          predicted_target_premium: prediction.premium.targetPremium,
+          predicted_sl_premium: prediction.premium.stopLossPremium,
+          expiry_date: expiryDateISO,
+          technical_score: analysis.trendScore,
+          trend_at_prediction: analysis.trend,
+          rsi_at_prediction: analysis.rsi,
+          tracked_until: new Date(new Date().getTime() + Math.min(daysToExpiry, 7) * 24 * 60 * 60 * 1000).toISOString()
+        });
+        console.log('✓ Prediction tracked for backtesting');
+      } catch (error) {
+        console.error('Failed to track prediction:', error);
+      }
+    }
+    
     // Final confirmation log
     console.log(`
 📊 FINAL LOT SIZE DETERMINATION:
@@ -765,6 +839,30 @@ Provide realistic options strategy:
         isLiveData: dataSource === 'NSE_LIVE',
         premiumSource: dataSource === 'NSE_LIVE' ? "nse-live" : "ai-estimate",
         lotSizeSource,
+        technicalAnalysis: {
+          macd: analysis.macd,
+          macdTrend: analysis.macdTrend,
+          bollingerBands: {
+            upper: analysis.upperBand,
+            lower: analysis.lowerBand,
+            position: analysis.bbPosition,
+            signal: analysis.bbSignal
+          },
+          volume: {
+            ratio: analysis.volumeRatio,
+            signal: analysis.volumeSignal
+          },
+          volatility: {
+            hv7d: analysis.hv7d,
+            hv30d: analysis.hv30d,
+            atr: analysis.atr,
+            atrPercent: analysis.atrPercent
+          },
+          supportResistance: {
+            support: analysis.support,
+            resistance: analysis.resistance
+          }
+        }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -810,11 +908,79 @@ async function fetchStockData(symbol: string) {
   }
 }
 
+// Calculate Historical Volatility (using log returns)
+function calculateHistoricalVolatility(prices: number[], period: number = 30): number {
+  if (prices.length < period + 1) return 0;
+  
+  const recentPrices = prices.slice(-period - 1);
+  const logReturns: number[] = [];
+  
+  for (let i = 1; i < recentPrices.length; i++) {
+    const logReturn = Math.log(recentPrices[i] / recentPrices[i - 1]);
+    logReturns.push(logReturn);
+  }
+  
+  const mean = logReturns.reduce((a, b) => a + b, 0) / logReturns.length;
+  const variance = logReturns.reduce((sum, ret) => sum + Math.pow(ret - mean, 2), 0) / logReturns.length;
+  const stdDev = Math.sqrt(variance);
+  
+  const annualizedVol = stdDev * Math.sqrt(252) * 100;
+  
+  return Math.round(annualizedVol * 100) / 100;
+}
+
+// Calculate IV Rank (where current IV sits in the 52-week range)
+async function calculateIVRank(supabase: any, symbol: string): Promise<number> {
+  const oneYearAgo = new Date();
+  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+  
+  const { data, error } = await supabase
+    .from('volatility_metrics')
+    .select('implied_volatility_avg')
+    .eq('symbol', symbol)
+    .gte('date', oneYearAgo.toISOString().split('T')[0])
+    .order('date', { ascending: false });
+  
+  if (error || !data || data.length === 0) return 50;
+  
+  const ivValues = data.map((d: any) => d.implied_volatility_avg).filter((v: number) => v !== null);
+  if (ivValues.length === 0) return 50;
+  
+  const currentIV = ivValues[0];
+  const minIV = Math.min(...ivValues);
+  const maxIV = Math.max(...ivValues);
+  
+  if (maxIV === minIV) return 50;
+  
+  const ivRank = ((currentIV - minIV) / (maxIV - minIV)) * 100;
+  return Math.round(ivRank);
+}
+
+// Black-Scholes simplified IV calculation
+function calculateImpliedVolatility(
+  premium: number,
+  spot: number,
+  strike: number,
+  daysToExpiry: number,
+  optionType: 'CE' | 'PE'
+): number {
+  const timeToExpiry = daysToExpiry / 365;
+  const moneyness = spot / strike;
+  
+  const atmPremiumPercent = (premium / spot) * 100;
+  const ivEstimate = atmPremiumPercent * Math.sqrt(252 / daysToExpiry);
+  
+  return Math.round(ivEstimate * 100) / 100;
+}
+
 function analyzeData(data: any[]) {
   const closes = data.map(d => d.close);
+  const highs = data.map(d => d.high);
+  const lows = data.map(d => d.low);
+  const volumes = data.map(d => d.volume);
   const current = closes[closes.length - 1];
   
-  // Simple RSI
+  // === RSI ===
   const changes = closes.slice(1).map((p, i) => p - closes[i]);
   const gains = changes.map(c => c > 0 ? c : 0);
   const losses = changes.map(c => c < 0 ? -c : 0);
@@ -822,9 +988,140 @@ function analyzeData(data: any[]) {
   const avgLoss = losses.slice(-14).reduce((a, b) => a + b, 0) / 14;
   const rsi = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss));
   
-  // Simple trend
+  // === SMA ===
   const sma20 = closes.slice(-20).reduce((a, b) => a + b, 0) / 20;
-  const trend = current > sma20 ? 'Bullish' : 'Bearish';
   
-  return { current, rsi: Math.round(rsi), trend };
+  // === EMA (Exponential Moving Average) ===
+  function calculateEMA(prices: number[], period: number): number {
+    const k = 2 / (period + 1);
+    let ema = prices[0];
+    for (let i = 1; i < prices.length; i++) {
+      ema = prices[i] * k + ema * (1 - k);
+    }
+    return ema;
+  }
+  
+  const ema12 = calculateEMA(closes.slice(-26), 12);
+  const ema26 = calculateEMA(closes.slice(-26), 26);
+  const ema50 = closes.length >= 70 ? calculateEMA(closes.slice(-70), 50) : sma20;
+  
+  // === MACD ===
+  const macd = ema12 - ema26;
+  const macdSignalLine = calculateEMA(
+    closes.slice(-35).map((_, i, arr) => {
+      if (i < 26) return 0;
+      const e12 = calculateEMA(arr.slice(0, i + 1).slice(-26), 12);
+      const e26 = calculateEMA(arr.slice(0, i + 1).slice(-26), 26);
+      return e12 - e26;
+    }).filter(v => v !== 0),
+    9
+  );
+  const macdHistogram = macd - macdSignalLine;
+  const macdTrend = macdHistogram > 0 ? 'Bullish' : 'Bearish';
+  
+  // === Bollinger Bands ===
+  const sma20_bb = sma20;
+  const variance = closes.slice(-20)
+    .reduce((sum, price) => sum + Math.pow(price - sma20_bb, 2), 0) / 20;
+  const stdDev = Math.sqrt(variance);
+  const upperBand = sma20_bb + (2 * stdDev);
+  const lowerBand = sma20_bb - (2 * stdDev);
+  const bbPosition = ((current - lowerBand) / (upperBand - lowerBand)) * 100;
+  
+  let bbSignal = 'Neutral';
+  if (current > upperBand) bbSignal = 'Overbought';
+  else if (current < lowerBand) bbSignal = 'Oversold';
+  else if (bbPosition > 70) bbSignal = 'Near Overbought';
+  else if (bbPosition < 30) bbSignal = 'Near Oversold';
+  
+  // === Volume Analysis ===
+  const avgVolume20 = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
+  const currentVolume = volumes[volumes.length - 1];
+  const volumeRatio = currentVolume / avgVolume20;
+  const volumeSignal = volumeRatio > 1.5 ? 'High Volume' : 
+                       volumeRatio < 0.5 ? 'Low Volume' : 'Normal Volume';
+  
+  // === ATR (Average True Range) ===
+  const trueRanges = [];
+  for (let i = 1; i < data.length; i++) {
+    const high = highs[i];
+    const low = lows[i];
+    const prevClose = closes[i - 1];
+    const tr = Math.max(
+      high - low,
+      Math.abs(high - prevClose),
+      Math.abs(low - prevClose)
+    );
+    trueRanges.push(tr);
+  }
+  const atr = trueRanges.slice(-14).reduce((a, b) => a + b, 0) / 14;
+  const atrPercent = (atr / current) * 100;
+  
+  // === Support & Resistance ===
+  const recentLows = lows.slice(-20);
+  const recentHighs = highs.slice(-20);
+  const support = Math.min(...recentLows);
+  const resistance = Math.max(...recentHighs);
+  
+  // === Multi-factor Trend Analysis ===
+  let trendScore = 0;
+  if (current > sma20) trendScore += 2;
+  if (current > ema50) trendScore += 2;
+  if (macdTrend === 'Bullish') trendScore += 2;
+  if (rsi > 50 && rsi < 70) trendScore += 1;
+  if (rsi > 70) trendScore -= 1;
+  if (rsi < 30) trendScore += 1;
+  if (volumeRatio > 1.2) trendScore += 1;
+  
+  const overallTrend = trendScore >= 4 ? 'Strong Bullish' :
+                       trendScore >= 2 ? 'Bullish' :
+                       trendScore <= -4 ? 'Strong Bearish' :
+                       trendScore <= -2 ? 'Bearish' : 'Neutral';
+  
+  // Calculate historical volatility
+  const hv7d = calculateHistoricalVolatility(closes, 7);
+  const hv30d = calculateHistoricalVolatility(closes, 30);
+  
+  return {
+    current: Math.round(current * 100) / 100,
+    
+    // Trend Indicators
+    rsi: Math.round(rsi),
+    sma20: Math.round(sma20 * 100) / 100,
+    ema12: Math.round(ema12 * 100) / 100,
+    ema26: Math.round(ema26 * 100) / 100,
+    ema50: Math.round(ema50 * 100) / 100,
+    
+    // MACD
+    macd: Math.round(macd * 100) / 100,
+    macdSignal: Math.round(macdSignalLine * 100) / 100,
+    macdHistogram: Math.round(macdHistogram * 100) / 100,
+    macdTrend,
+    
+    // Bollinger Bands
+    upperBand: Math.round(upperBand * 100) / 100,
+    lowerBand: Math.round(lowerBand * 100) / 100,
+    bbPosition: Math.round(bbPosition),
+    bbSignal,
+    
+    // Volume
+    avgVolume20: Math.round(avgVolume20),
+    currentVolume: Math.round(currentVolume),
+    volumeRatio: Math.round(volumeRatio * 100) / 100,
+    volumeSignal,
+    
+    // Volatility
+    atr: Math.round(atr * 100) / 100,
+    atrPercent: Math.round(atrPercent * 100) / 100,
+    hv7d,
+    hv30d,
+    
+    // Support/Resistance
+    support: Math.round(support * 100) / 100,
+    resistance: Math.round(resistance * 100) / 100,
+    
+    // Overall Assessment
+    trend: overallTrend,
+    trendScore,
+  };
 }
