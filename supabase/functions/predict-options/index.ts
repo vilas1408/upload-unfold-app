@@ -213,6 +213,51 @@ function extractATMPremium(optionChainData: any, currentPrice: number, optionTyp
   }
 }
 
+// Extract lot size from NSE option chain data
+function extractLotSizeFromOptionChain(optionChainData: any): number | null {
+  try {
+    // Try multiple common paths where NSE exposes marketLot
+    const records = optionChainData?.records?.data || optionChainData?.filtered?.data || [];
+    
+    if (records.length === 0) {
+      console.log('No records found in option chain data for lot size extraction');
+      return null;
+    }
+    
+    // Check first record for marketLot (most common location)
+    const firstRecord = records[0];
+    
+    if (firstRecord && typeof firstRecord.marketLot === 'number') {
+      const lotSize = firstRecord.marketLot;
+      
+      // Validate: lot size should be positive and within reasonable range
+      if (lotSize > 0 && lotSize >= 10 && lotSize <= 100000) {
+        console.log(`✓ Extracted lot size from NSE option chain (records.data[0].marketLot): ${lotSize} units`);
+        return lotSize;
+      } else {
+        console.log(`⚠️ Invalid lot size value in NSE data: ${lotSize}`);
+        return null;
+      }
+    }
+    
+    // Try filtered path as alternative
+    if (optionChainData?.filtered?.data?.[0]?.marketLot) {
+      const lotSize = optionChainData.filtered.data[0].marketLot;
+      if (lotSize > 0 && lotSize >= 10 && lotSize <= 100000) {
+        console.log(`✓ Extracted lot size from NSE option chain (filtered.data[0].marketLot): ${lotSize} units`);
+        return lotSize;
+      }
+    }
+    
+    console.log('marketLot field not found in NSE option chain data');
+    console.log('Available keys in first record:', Object.keys(firstRecord || {}));
+    return null;
+  } catch (error) {
+    console.error('Error extracting lot size from option chain:', error);
+    return null;
+  }
+}
+
 // Calculate estimated premium with time value multiplier (fallback)
 function calculateEstimatedPremium(baseMin: number, baseMax: number, daysToExpiry: number) {
   let multiplier = 1.0;
@@ -429,19 +474,6 @@ serve(async (req) => {
     
     console.log(`Initial lot size for ${symbol} (${type}): ${lotSize} units (source: ${lotSizeSource})`);
     
-    // Step 2: For stocks, fetch real-time lot size from NiftyTrader
-    if (type === 'share') {
-      const niftyTraderLotSize = await fetchLotSizeFromNiftyTrader(symbol);
-      if (niftyTraderLotSize && niftyTraderLotSize > 0) {
-        lotSize = niftyTraderLotSize;
-        lotSizeSource = 'niftytrader-live';
-        console.log(`✓ Lot size updated from NiftyTrader: ${lotSize} units`);
-      } else {
-        console.log(`⚠️ Could not fetch lot size from NiftyTrader, using fallback: ${lotSize} units`);
-        lotSizeSource = 'fallback';
-      }
-    }
-
     // Try to fetch real option chain data from NSE
     let realCallPremium: number | null = null;
     let realPutPremium: number | null = null;
@@ -454,6 +486,21 @@ serve(async (req) => {
     const optionChainData = await fetchNSEOptionChain(nseSymbolToFetch, type);
     
     if (optionChainData) {
+      // Extract lot size from NSE option chain for stocks (before extracting premiums)
+      if (type === 'share' && lotSizeSource !== 'index-config') {
+        const nseLotSize = extractLotSizeFromOptionChain(optionChainData);
+        if (nseLotSize && nseLotSize > 0) {
+          lotSize = nseLotSize;
+          lotSizeSource = 'nse-option-chain';
+          console.log(`✓ Lot size updated from NSE option chain: ${lotSize} units`);
+        } else {
+          console.log(`⚠️ Could not extract lot size from NSE option chain, keeping: ${lotSize} units (source: ${lotSizeSource})`);
+          if (lotSizeSource === 'default') {
+            lotSizeSource = 'fallback';
+          }
+        }
+      }
+      
       realCallPremium = extractATMPremium(optionChainData, analysis.current, 'CE');
       realPutPremium = extractATMPremium(optionChainData, analysis.current, 'PE');
       
@@ -465,6 +512,15 @@ serve(async (req) => {
         );
       }
     }
+    
+    // Final lot size summary log
+    console.log(`📊 FINAL LOT SIZE:
+  Symbol: ${symbol}
+  Type: ${type}
+  Lot Size: ${lotSize} units
+  Source: ${lotSizeSource}
+  Premium Source: ${dataSource}
+`);
 
     // Use AI prediction with real or estimated premium data
     console.log(`Generating AI prediction with ${dataSource === 'NSE_LIVE' ? 'real NSE' : 'estimated'} premium data`);
