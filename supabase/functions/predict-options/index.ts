@@ -6,52 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Static lot size lookup from Dhan NSE F&O data (Jan 2026)
-const LOT_SIZE_LOOKUP: Record<string, number> = {
-  // Indices
-  'BANKNIFTY': 30, 'FINNIFTY': 60, 'MIDCPNIFTY': 120, 'NIFTY': 65, 'NIFTYNXT50': 25,
-  // Stocks
-  '360ONE': 500, 'ABB': 125, 'ABCAPITAL': 3100, 'ADANIENSOL': 675, 'ADANIENT': 309,
-  'ADANIGREEN': 600, 'ADANIPORTS': 475, 'ALKEM': 125, 'AMBER': 100, 'AMBUJACEM': 1050,
-  'ANGELONE': 250, 'APLAPOLLO': 350, 'APOLLOHOSP': 125, 'ASHOKLEY': 5000, 'ASIANPAINT': 250,
-  'ASTRAL': 425, 'AUBANK': 1000, 'AUROPHARMA': 550, 'AXISBANK': 625, 'BAJAJ-AUTO': 75,
-  'BAJAJFINSV': 250, 'BAJFINANCE': 750, 'BANDHANBNK': 3600, 'BANKBARODA': 2925, 'BANKINDIA': 5200,
-  'BDL': 350, 'BEL': 1425, 'BHARATFORG': 500, 'BHARTIARTL': 475, 'BHEL': 2625,
-  'BIOCON': 2500, 'BLUESTARCO': 325, 'BOSCHLTD': 25, 'BPCL': 1975, 'BRITANNIA': 125,
-  'BSE': 375, 'CAMS': 150, 'CANBK': 6750, 'CDSL': 475, 'CGPOWER': 850,
-  'CHOLAFIN': 625, 'CIPLA': 375, 'COALINDIA': 1350, 'COFORGE': 375, 'COLPAL': 225,
-  'CONCOR': 1250, 'CROMPTON': 1800, 'CUMMINSIND': 200, 'DABUR': 1250, 'DALBHARAT': 325,
-  'DIXON': 50, 'DLF': 825, 'DMART': 150, 'DRREDDY': 625, 'EICHERMOT': 100,
-  'ETERNAL': 2425, 'EXIDEIND': 1800, 'FEDERALBNK': 5000, 'FORTIS': 775, 'GAIL': 3150,
-  'GLENMARK': 375, 'GMRAIRPORT': 6975, 'GODREJCP': 500, 'GODREJPROP': 275, 'GRASIM': 250,
-  'HAL': 150, 'HAVELLS': 500, 'HCLTECH': 350, 'HDFCAMC': 150, 'HDFCBANK': 550,
-  'HDFCLIFE': 1100, 'HEROMOTOCO': 150, 'HINDALCO': 700, 'HINDPETRO': 2025, 'HINDUNILVR': 300,
-  'HINDZINC': 1225, 'HUDCO': 2775, 'ICICIBANK': 700, 'ICICIGI': 325, 'ICICIPRULI': 925,
-  'IDEA': 71475, 'IDFCFIRSTB': 9275, 'IEX': 3750, 'IIFL': 1650, 'INDHOTEL': 1000,
-  'INDIANB': 1000, 'INDIGO': 150, 'INDUSINDBK': 700, 'INDUSTOWER': 1700, 'INFY': 400,
-  'INOXWIND': 3575, 'IOC': 4875, 'IRCTC': 875, 'IREDA': 3450, 'IRFC': 4250,
-  'ITC': 1600, 'JINDALSTEL': 625, 'JIOFIN': 2350, 'JSWENERGY': 1000, 'JSWSTEEL': 675,
-  'JUBLFOOD': 1250, 'KALYANKJIL': 1175, 'KAYNES': 100, 'KEI': 575, 'KOTAKBANK': 800,
-  'LAURUSLABS': 325, 'LICHSGFIN': 1650, 'LICI': 1750, 'LODHA': 625, 'LT': 1500,
-  'LTFOODS': 1650, 'LTIM': 625, 'LTTS': 150, 'LUPIN': 450, 'M&M': 850,
-  'M&MFIN': 1425, 'MANAPPURAM': 3500, 'MARICO': 1250, 'MARUTI': 250, 'MAXHEALTH': 850,
-  'MCX': 200, 'MOTHERSON': 6725, 'MPHASIS': 350, 'MRF': 10, 'MUTHOOTFIN': 375,
-  'NAM-INDIA': 1875, 'NATIONALUM': 5125, 'NAUKRI': 100, 'NAVINFLUOR': 150, 'NESTLEIND': 200,
-  'NHPC': 18375, 'NMDC': 6375, 'NTPC': 4125, 'NYKAA': 1175, 'OBEROIRLTY': 500,
-  'OFSS': 150, 'OIL': 2575, 'ONGC': 2700, 'PAGEIND': 15, 'PAYTM': 1175,
-  'PERSISTENT': 100, 'PETRONET': 2475, 'PFC': 1725, 'PIDILITIND': 250, 'PIIND': 550,
-  'POLICYBZR': 375, 'POLYCAB': 175, 'POWERGRID': 2700, 'PVR': 1400, 'RAIN': 825,
-  'RECLTD': 2100, 'RELIANCE': 250, 'ROUTE': 2775, 'SAIL': 8875, 'SBICARD': 900,
-  'SBILIFE': 725, 'SBIN': 1250, 'SHREECEM': 50, 'SIEMENS': 175, 'SJVN': 7475,
-  'SONACOMS': 1050, 'SRF': 275, 'SUNPHARMA': 800, 'SUNTV': 1175, 'SUPREMEIND': 125,
-  'SYNGENE': 725, 'TATACHEM': 625, 'TATACOMM': 350, 'TATACONSUM': 800, 'TATAELXSI': 100,
-  'TATAMOTORS': 1575, 'TATAPOWER': 2425, 'TATASTEEL': 1925, 'TCS': 250, 'TECHM': 575,
-  'TIINDIA': 1050, 'TITAN': 275, 'TORNTPHARM': 300, 'TORNTPOWER': 900, 'TRENT': 300,
-  'TVSMOTOR': 425, 'UBL': 350, 'ULTRACEMCO': 100, 'UNIONBANK': 5650, 'UPL': 1300,
-  'VBL': 1325, 'VEDL': 2050, 'VOLTAS': 500, 'YESBANK': 33200, 'ZEEL': 2750,
-  'ZOMATO': 3025, 'ZYDUSLIFE': 800,
-};
-
 // NSE API Configuration
 const NSE_BASE_URL = "https://www.nseindia.com";
 const NSE_OPTION_CHAIN_URL = "https://www.nseindia.com/api/option-chain-indices";
@@ -449,25 +403,45 @@ serve(async (req) => {
       }
     }
 
-    // Determine lot size using static lookup from Dhan data
-    let nseSymbol = symbol;
-    const lookupLotSize = LOT_SIZE_LOOKUP[symbol];
-    let lotSize = lookupLotSize || 500; // Default fallback if not found
-    let lotSizeSource = lookupLotSize ? 'dhan-lookup' : 'fallback';
+    // Determine lot size
+    let lotSize = 500; // Default fallback
+    let nseSymbol = '';
+    let lotSizeSource = 'default';
     
-    // Map special symbols for indices
-    if (symbol === '^NSEI') {
+    // Step 1: Set index-specific lot sizes (these are stable and official)
+    if (symbol === 'NIFTY' || symbol === '^NSEI') {
+      lotSize = 75;
       nseSymbol = 'NIFTY';
-      lotSize = LOT_SIZE_LOOKUP['NIFTY'] || 65;
-      lotSizeSource = 'dhan-lookup';
-    } else if (symbol === '^NSEBANK') {
+      lotSizeSource = 'index-config';
+    } else if (symbol === 'BANKNIFTY' || symbol === '^NSEBANK') {
+      lotSize = 35;
       nseSymbol = 'BANKNIFTY';
-      lotSize = LOT_SIZE_LOOKUP['BANKNIFTY'] || 30;
-      lotSizeSource = 'dhan-lookup';
+      lotSizeSource = 'index-config';
+    } else if (symbol === 'FINNIFTY') {
+      lotSize = 40;
+      nseSymbol = 'FINNIFTY';
+      lotSizeSource = 'index-config';
+    } else if (symbol === 'MIDCPNIFTY') {
+      lotSize = 140;
+      nseSymbol = 'MIDCPNIFTY';
+      lotSizeSource = 'index-config';
     }
     
-    console.log(`Lot size for ${symbol}: ${lotSize} units (source: ${lotSizeSource})`);
+    console.log(`Initial lot size for ${symbol} (${type}): ${lotSize} units (source: ${lotSizeSource})`);
     
+    // Step 2: For stocks, fetch real-time lot size from NiftyTrader
+    if (type === 'share') {
+      const niftyTraderLotSize = await fetchLotSizeFromNiftyTrader(symbol);
+      if (niftyTraderLotSize && niftyTraderLotSize > 0) {
+        lotSize = niftyTraderLotSize;
+        lotSizeSource = 'niftytrader-live';
+        console.log(`✓ Lot size updated from NiftyTrader: ${lotSize} units`);
+      } else {
+        console.log(`⚠️ Could not fetch lot size from NiftyTrader, using fallback: ${lotSize} units`);
+        lotSizeSource = 'fallback';
+      }
+    }
+
     // Try to fetch real option chain data from NSE
     let realCallPremium: number | null = null;
     let realPutPremium: number | null = null;
@@ -491,15 +465,6 @@ serve(async (req) => {
         );
       }
     }
-    
-    // Final lot size summary log
-    console.log(`📊 FINAL LOT SIZE:
-  Symbol: ${symbol}
-  Type: ${type}
-  Lot Size: ${lotSize} units
-  Source: ${lotSizeSource}
-  Premium Source: ${dataSource}
-`);
 
     // Use AI prediction with real or estimated premium data
     console.log(`Generating AI prediction with ${dataSource === 'NSE_LIVE' ? 'real NSE' : 'estimated'} premium data`);
