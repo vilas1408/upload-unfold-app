@@ -291,52 +291,100 @@ serve(async (req) => {
     const historicalData = await fetchStockData(symbol);
     let analysis = analyzeData(historicalData); // Will be re-analyzed after news fetch
     
-    // Fetch news sentiment using Lovable AI
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    // Fetch news from NewsAPI.org
+    const NEWS_API_KEY = Deno.env.get('NEWS_API_KEY');
     let newsSentiment = { overall: 'neutral', summary: 'No recent news available', articles: [] };
     
-    if (LOVABLE_API_KEY) {
+    if (NEWS_API_KEY) {
       try {
-        const newsResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'google/gemini-2.5-flash',
-            messages: [
-              {
-                role: 'system',
-                content: 'You are a financial news analyst. Search for and analyze recent news about the given stock. Return ONLY valid JSON.'
-              },
-              {
-                role: 'user',
-                content: `Search for recent news (last 3 days) about ${name} (${symbol}). Analyze the sentiment and return JSON:
-{
-  "overall": "positive" | "negative" | "neutral",
-  "summary": "brief summary of news sentiment",
-  "articles": [{"title": "string", "sentiment": "positive/negative/neutral", "impact": "high/medium/low"}]
-}`
-              }
-            ],
-            temperature: 0.3,
-          }),
-        });
+        // Calculate date range (last 3 days)
+        const toDate = new Date();
+        const fromDate = new Date();
+        fromDate.setDate(fromDate.getDate() - 3);
+        
+        const formatDate = (date: Date) => date.toISOString().split('T')[0];
+        
+        // Build search query
+        const searchQuery = `${name} ${symbol}`.replace(/\^/g, '');
+        
+        console.log(`Fetching news from NewsAPI.org for: ${searchQuery}`);
+        
+        const newsResponse = await fetch(
+          `https://newsapi.org/v2/everything?q=${encodeURIComponent(searchQuery)}&from=${formatDate(fromDate)}&to=${formatDate(toDate)}&sortBy=publishedAt&language=en&apiKey=${NEWS_API_KEY}`,
+          {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+          }
+        );
 
         if (newsResponse.ok) {
           const newsData = await newsResponse.json();
-          const content = newsData.choices?.[0]?.message?.content;
-          if (content) {
-            const jsonMatch = content.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-              newsSentiment = JSON.parse(jsonMatch[0]);
+          const articles = newsData.articles || [];
+          
+          console.log(`✓ Found ${articles.length} news articles from NewsAPI.org`);
+          
+          if (articles.length > 0) {
+            // Use Lovable AI to analyze sentiment of real news articles
+            const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+            if (LOVABLE_API_KEY) {
+              const articlesForAnalysis = articles.slice(0, 10).map((a: any) => ({
+                title: a.title,
+                description: a.description,
+                source: a.source?.name
+              }));
+              
+              const sentimentResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  model: 'google/gemini-2.5-flash',
+                  messages: [
+                    {
+                      role: 'system',
+                      content: 'You are a financial news sentiment analyzer. Analyze the sentiment of news articles and return ONLY valid JSON.'
+                    },
+                    {
+                      role: 'user',
+                      content: `Analyze the sentiment of these news articles about ${name} (${symbol}) and return JSON:
+${JSON.stringify(articlesForAnalysis, null, 2)}
+
+Return this JSON format:
+{
+  "overall": "positive" | "negative" | "neutral",
+  "summary": "brief summary of news sentiment (1-2 sentences)",
+  "articles": [{"title": "string", "sentiment": "positive/negative/neutral", "impact": "high/medium/low"}]
+}`
+                    }
+                  ],
+                  temperature: 0.3,
+                }),
+              });
+              
+              if (sentimentResponse.ok) {
+                const sentimentData = await sentimentResponse.json();
+                const content = sentimentData.choices?.[0]?.message?.content;
+                if (content) {
+                  const jsonMatch = content.match(/\{[\s\S]*\}/);
+                  if (jsonMatch) {
+                    newsSentiment = JSON.parse(jsonMatch[0]);
+                    console.log(`✓ News sentiment analyzed: ${newsSentiment.overall}`);
+                  }
+                }
+              }
             }
           }
+        } else {
+          console.error(`NewsAPI.org returned status ${newsResponse.status}`);
         }
       } catch (error) {
-        console.error('News sentiment error:', error);
+        console.error('News fetching error:', error);
       }
+    } else {
+      console.warn('NEWS_API_KEY not configured, skipping news sentiment analysis');
     }
     
     // Re-analyze data with news sentiment included
