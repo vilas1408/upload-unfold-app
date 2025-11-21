@@ -289,7 +289,7 @@ serve(async (req) => {
 
     // Fetch historical data
     const historicalData = await fetchStockData(symbol);
-    const analysis = analyzeData(historicalData);
+    let analysis = analyzeData(historicalData); // Will be re-analyzed after news fetch
     
     // Fetch news sentiment using Lovable AI
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
@@ -338,6 +338,9 @@ serve(async (req) => {
         console.error('News sentiment error:', error);
       }
     }
+    
+    // Re-analyze data with news sentiment included
+    analysis = analyzeData(historicalData, newsSentiment);
     
     // Calculate expiry date based on option type with IST timezone and market hours
     const istTime = getCurrentISTTime();
@@ -624,9 +627,14 @@ ${isExpiryToday ? '- ⚠️ TODAY IS EXPIRY DAY - Intraday only, exit before 3:1
 
 ${premiumContext}
 
-RULES:
-- BULLISH: Recommend BUY CALL only
-- BEARISH: Recommend BUY PUT only
+⚠️ CRITICAL RULE: NEWS SENTIMENT OVERRIDES TECHNICAL ANALYSIS
+- If NEWS SENTIMENT is "negative" → YOU MUST RECOMMEND "Long Put" (BEARISH) with PUT option
+- If NEWS SENTIMENT is "positive" → YOU MUST RECOMMEND "Long Call" (BULLISH) with CALL option
+- If NEWS SENTIMENT is "neutral" → Use technical analysis to decide
+
+SECONDARY RULES (only if sentiment is neutral):
+- BULLISH technical signals: Recommend BUY CALL
+- BEARISH technical signals: Recommend BUY PUT
 - Provide SPECIFIC entry, target, and stop loss prices
 - Consider time decay (theta) impact given ${daysToExpiry} days to expiry
 ${dataSource === 'NSE_LIVE' ? '- Use REAL premiums from NSE data' : '- Use ESTIMATED premiums with realistic time value'}`;
@@ -766,6 +774,28 @@ Provide realistic options strategy:
       throw new Error('Invalid JSON in AI response');
     }
     
+    // CRITICAL: Validate sentiment-strategy alignment
+    let strategyAutoCorrect = false;
+    if (newsSentiment.overall === 'negative' && prediction.optionType === 'CALL') {
+      console.error(`❌ STRATEGY CONFLICT: Negative sentiment but AI recommended CALL!`);
+      console.log('🔄 Auto-correcting strategy to PUT...');
+      
+      prediction.strategy = 'Long Put';
+      prediction.optionType = 'PUT';
+      prediction.reasoning = `${prediction.reasoning} [AUTO-CORRECTED: Negative news sentiment requires bearish PUT strategy]`;
+      strategyAutoCorrect = true;
+    }
+    
+    if (newsSentiment.overall === 'positive' && prediction.optionType === 'PUT') {
+      console.error(`❌ STRATEGY CONFLICT: Positive sentiment but AI recommended PUT!`);
+      console.log('🔄 Auto-correcting strategy to CALL...');
+      
+      prediction.strategy = 'Long Call';
+      prediction.optionType = 'CALL';
+      prediction.reasoning = `${prediction.reasoning} [AUTO-CORRECTED: Positive news sentiment requires bullish CALL strategy]`;
+      strategyAutoCorrect = true;
+    }
+    
     // Override with real NSE premium if available
     if (dataSource === 'NSE_LIVE' && realCallPremium && prediction.optionType === 'CALL') {
       prediction.premium = prediction.premium || {} as any;
@@ -780,6 +810,20 @@ Provide realistic options strategy:
       prediction.totalInvestment = realPutPremium * prediction.lotSize;
       console.log(`Overriding entry premium with REAL NSE put premium: ₹${realPutPremium}`);
     }
+    
+    // Log prediction decision flow
+    console.log(`
+📊 PREDICTION DECISION FLOW:
+  1. News Sentiment: ${newsSentiment.overall}
+  2. Technical Trend: ${analysis.trend}
+  3. Trend Score (with sentiment): ${analysis.trendScore}
+  4. MACD Trend: ${analysis.macdTrend}
+  5. RSI: ${analysis.rsi}
+  6. AI Recommended: ${prediction.optionType}
+  7. Auto-Corrected: ${strategyAutoCorrect ? '✅ YES' : '❌ NO'}
+  8. Final Decision: ${prediction.optionType}
+  9. Validation: ${strategyAutoCorrect ? '⚠️ CONFLICT DETECTED & CORRECTED' : '✅ ALIGNED'}
+`);
     
     // Only validate AI estimates, NEVER validate real NSE data
     if (dataSource === 'AI_ESTIMATED') {
@@ -1035,7 +1079,7 @@ function calculateImpliedVolatility(
   return Math.round(ivEstimate * 100) / 100;
 }
 
-function analyzeData(data: any[]) {
+function analyzeData(data: any[], newsSentiment?: { overall: string }) {
   const closes = data.map(d => d.close);
   const highs = data.map(d => d.high);
   const lows = data.map(d => d.low);
@@ -1125,8 +1169,17 @@ function analyzeData(data: any[]) {
   const support = Math.min(...recentLows);
   const resistance = Math.max(...recentHighs);
   
-  // === Multi-factor Trend Analysis ===
+  // === Multi-factor Trend Analysis (with News Sentiment Priority) ===
   let trendScore = 0;
+  
+  // HIGHEST PRIORITY: News Sentiment (overrides technical signals)
+  if (newsSentiment) {
+    if (newsSentiment.overall === 'positive') trendScore += 3;
+    if (newsSentiment.overall === 'negative') trendScore -= 3;
+    // neutral adds 0
+  }
+  
+  // Technical indicators (secondary)
   if (current > sma20) trendScore += 2;
   if (current > ema50) trendScore += 2;
   if (macdTrend === 'Bullish') trendScore += 2;

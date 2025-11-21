@@ -1,6 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Minus, AlertTriangle, Target, Shield, Activity, Brain, Calendar, Clock } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { TrendingUp, TrendingDown, Minus, AlertTriangle, AlertCircle, Target, Shield, Activity, Brain, Calendar, Clock } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 interface OptionsPrediction {
@@ -105,6 +106,11 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData, dataSour
     price: item.close,
   }));
 
+  // Detect sentiment-strategy conflicts
+  const hasConflict = 
+    (prediction.newsSentiment?.overall === 'negative' && prediction.optionType === 'CALL') ||
+    (prediction.newsSentiment?.overall === 'positive' && prediction.optionType === 'PUT');
+
   return (
     <div id="options-prediction" className="container mx-auto px-4 py-12">
       <Card className="p-6 md:p-8 backdrop-blur-sm bg-card/50 border-primary/20">
@@ -176,6 +182,18 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData, dataSour
                 </div>
               </div>
             </Card>
+          )}
+
+          {/* Sentiment-Strategy Conflict Warning */}
+          {hasConflict && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Strategy-Sentiment Conflict Detected</AlertTitle>
+              <AlertDescription>
+                News sentiment is <strong>{prediction.newsSentiment?.overall}</strong> but strategy recommends <strong>{prediction.optionType}</strong>. 
+                This indicates mixed signals between fundamentals and technicals. The system has auto-corrected to align with news sentiment (higher priority). Trade with caution.
+              </AlertDescription>
+            </Alert>
           )}
 
           {/* Time to Expiry Warning */}
