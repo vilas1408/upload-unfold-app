@@ -291,65 +291,145 @@ serve(async (req) => {
     const historicalData = await fetchStockData(symbol);
     let analysis = analyzeData(historicalData); // Will be re-analyzed after news fetch
     
-    // Fetch news from NewsAPI.org
+    // Fetch news with multiple sources and fallbacks
     const NEWS_API_KEY = Deno.env.get('NEWS_API_KEY');
     let newsSentiment = { overall: 'neutral', summary: 'No recent news available', articles: [] };
     
+    // Helper function to fetch and parse Google News RSS
+    const fetchGoogleNewsRSS = async (query: string): Promise<any[]> => {
+      try {
+        const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-IN&gl=IN&ceid=IN:en`;
+        console.log(`Fetching Google News RSS for: ${query}`);
+        
+        const response = await fetch(rssUrl);
+        if (!response.ok) return [];
+        
+        const xmlText = await response.text();
+        
+        // Parse RSS XML to extract articles
+        const titleMatches = xmlText.matchAll(/<title><!\[CDATA\[(.*?)\]\]><\/title>/g);
+        const linkMatches = xmlText.matchAll(/<link>(.*?)<\/link>/g);
+        const pubDateMatches = xmlText.matchAll(/<pubDate>(.*?)<\/pubDate>/g);
+        
+        const titles = Array.from(titleMatches).map(m => m[1]);
+        const links = Array.from(linkMatches).map(m => m[1]);
+        const dates = Array.from(pubDateMatches).map(m => m[1]);
+        
+        // Skip first item (channel title/link)
+        const articles = [];
+        for (let i = 1; i < Math.min(titles.length, 11); i++) {
+          if (titles[i] && !titles[i].includes('Google News')) {
+            articles.push({
+              title: titles[i],
+              url: links[i] || '',
+              publishedAt: dates[i] || new Date().toISOString(),
+              source: { name: 'Google News' }
+            });
+          }
+        }
+        
+        console.log(`✓ Found ${articles.length} articles from Google News RSS`);
+        return articles;
+      } catch (error) {
+        console.error('Google News RSS fetch failed:', error);
+        return [];
+      }
+    };
+    
     if (NEWS_API_KEY) {
       try {
-        // Calculate date range (last 3 days)
+        // Calculate date range (last 7 days for better coverage)
         const toDate = new Date();
         const fromDate = new Date();
-        fromDate.setDate(fromDate.getDate() - 3);
+        fromDate.setDate(fromDate.getDate() - 7);
         
         const formatDate = (date: Date) => date.toISOString().split('T')[0];
         
-        // Build search query
-        const searchQuery = `${name} ${symbol}`.replace(/\^/g, '');
+        // Build broader search queries
+        const cleanSymbol = symbol.replace(/\^/g, '').replace('.NS', '');
+        const queries = [
+          // Primary: Use broader Indian market terms
+          `(${name} OR ${cleanSymbol}) AND (India OR NSE OR BSE OR "stock market")`,
+          // Fallback 1: Just the name and symbol
+          `${name} ${cleanSymbol}`,
+          // Fallback 2: Symbol only
+          cleanSymbol
+        ];
         
-        console.log(`Fetching news from NewsAPI.org for: ${searchQuery}`);
+        let articles: any[] = [];
+        let queryUsed = '';
         
-        const newsResponse = await fetch(
-          `https://newsapi.org/v2/everything?q=${encodeURIComponent(searchQuery)}&from=${formatDate(fromDate)}&to=${formatDate(toDate)}&sortBy=publishedAt&language=en&apiKey=${NEWS_API_KEY}`,
-          {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        // Try queries in order until we get results
+        for (const query of queries) {
+          if (articles.length > 0) break;
+          
+          console.log(`Trying NewsAPI query: ${query}`);
+          
+          const newsResponse = await fetch(
+            `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&from=${formatDate(fromDate)}&to=${formatDate(toDate)}&sortBy=publishedAt&language=en&domains=economictimes.com,moneycontrol.com,livemint.com,business-standard.com,financialexpress.com,ndtv.com&apiKey=${NEWS_API_KEY}`,
+            {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+              }
+            }
+          );
+
+          if (newsResponse.ok) {
+            const newsData = await newsResponse.json();
+            articles = newsData.articles || [];
+            if (articles.length > 0) {
+              queryUsed = query;
+              console.log(`✓ Found ${articles.length} articles from NewsAPI with query: ${query}`);
             }
           }
-        );
-
-        if (newsResponse.ok) {
-          const newsData = await newsResponse.json();
-          const articles = newsData.articles || [];
+        }
+        
+        // Fallback to Google News RSS if NewsAPI returns no results
+        if (articles.length === 0) {
+          console.log('NewsAPI returned 0 results, trying Google News RSS fallback...');
+          const rssQueries = [
+            `${name} ${cleanSymbol} India stock`,
+            `${name} share price`,
+            `${cleanSymbol} NSE`
+          ];
           
-          console.log(`✓ Found ${articles.length} news articles from NewsAPI.org`);
+          for (const rssQuery of rssQueries) {
+            if (articles.length > 0) break;
+            articles = await fetchGoogleNewsRSS(rssQuery);
+          }
           
           if (articles.length > 0) {
-            // Use Lovable AI to analyze sentiment of real news articles
-            const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-            if (LOVABLE_API_KEY) {
-              const articlesForAnalysis = articles.slice(0, 10).map((a: any) => ({
-                title: a.title,
-                description: a.description,
-                source: a.source?.name
-              }));
-              
-              const sentimentResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  model: 'google/gemini-2.5-flash',
-                  messages: [
-                    {
-                      role: 'system',
-                      content: 'You are a financial news sentiment analyzer. Analyze the sentiment of news articles and return ONLY valid JSON.'
-                    },
-                    {
-                      role: 'user',
-                      content: `Analyze the sentiment of these news articles about ${name} (${symbol}) and return JSON:
+            console.log(`✓ Using ${articles.length} articles from Google News RSS fallback`);
+          }
+        }
+        
+        // Analyze sentiment if we have articles
+        if (articles.length > 0) {
+          // Use Lovable AI to analyze sentiment of real news articles
+          const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+          if (LOVABLE_API_KEY) {
+            const articlesForAnalysis = articles.slice(0, 10).map((a: any) => ({
+              title: a.title,
+              description: a.description || a.title,
+              source: a.source?.name
+            }));
+            
+            const sentimentResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model: 'google/gemini-2.5-flash',
+                messages: [
+                  {
+                    role: 'system',
+                    content: 'You are a financial news sentiment analyzer. Analyze the sentiment of news articles and return ONLY valid JSON.'
+                  },
+                  {
+                    role: 'user',
+                    content: `Analyze the sentiment of these news articles about ${name} (${symbol}) and return JSON:
 ${JSON.stringify(articlesForAnalysis, null, 2)}
 
 Return this JSON format:
@@ -358,27 +438,26 @@ Return this JSON format:
   "summary": "brief summary of news sentiment (1-2 sentences)",
   "articles": [{"title": "string", "sentiment": "positive/negative/neutral", "impact": "high/medium/low"}]
 }`
-                    }
-                  ],
-                  temperature: 0.3,
-                }),
-              });
-              
-              if (sentimentResponse.ok) {
-                const sentimentData = await sentimentResponse.json();
-                const content = sentimentData.choices?.[0]?.message?.content;
-                if (content) {
-                  const jsonMatch = content.match(/\{[\s\S]*\}/);
-                  if (jsonMatch) {
-                    newsSentiment = JSON.parse(jsonMatch[0]);
-                    console.log(`✓ News sentiment analyzed: ${newsSentiment.overall}`);
                   }
+                ],
+                temperature: 0.3,
+              }),
+            });
+            
+            if (sentimentResponse.ok) {
+              const sentimentData = await sentimentResponse.json();
+              const content = sentimentData.choices?.[0]?.message?.content;
+              if (content) {
+                const jsonMatch = content.match(/\{[\s\S]*\}/);
+                if (jsonMatch) {
+                  newsSentiment = JSON.parse(jsonMatch[0]);
+                  console.log(`✓ News sentiment analyzed: ${newsSentiment.overall} (${articles.length} articles, source: ${queryUsed || 'Google News RSS'})`);
                 }
               }
             }
           }
         } else {
-          console.error(`NewsAPI.org returned status ${newsResponse.status}`);
+          console.warn('No news articles found from any source, using neutral sentiment');
         }
       } catch (error) {
         console.error('News fetching error:', error);
