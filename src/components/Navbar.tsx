@@ -59,6 +59,9 @@ const Navbar = () => {
           <Link to="/options" className="text-foreground hover:text-primary transition-colors">
             Options Trading
           </Link>
+          <Link to="/backtesting" className="text-foreground hover:text-primary transition-colors">
+            Backtesting
+          </Link>
           {isHomePage && (
             <>
               <a href="#dashboard" className="text-foreground hover:text-primary transition-colors">

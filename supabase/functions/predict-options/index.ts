@@ -361,6 +361,9 @@ serve(async (req) => {
     const historicalData = await fetchStockData(symbol);
     let analysis = analyzeData(historicalData); // Will be re-analyzed after news fetch
     
+    // PRIORITY 4: Fetch Market Context (Nifty correlation, VIX, time-of-day)
+    const marketContext = await fetchMarketContext(symbol, type);
+    
     // Fetch news with multiple sources and fallbacks
     const NEWS_API_KEY = Deno.env.get('NEWS_API_KEY');
     let newsSentiment = { overall: 'neutral', summary: 'No recent news available', articles: [] };
@@ -1022,27 +1025,65 @@ Provide realistic options strategy:
       throw new Error('Invalid JSON in AI response');
     }
     
-    // CRITICAL: Validate sentiment-strategy alignment
+    // PRIORITY 3: Weighted Confidence Scoring (40% sentiment, 40% technical, 20% volume)
+    const sentimentWeight = 0.4;
+    const technicalWeight = 0.4;
+    const volumeWeight = 0.2;
+    
+    // Calculate sentiment score (-100 to +100)
+    let sentimentScore = 0;
+    let sentimentConfidence = 'low';
+    
+    if (newsSentiment.overall === 'positive') {
+      sentimentScore = 70;
+      sentimentConfidence = newsSentiment.articles?.some((a: any) => a.impact === 'high') ? 'high' : 'medium';
+    } else if (newsSentiment.overall === 'negative') {
+      sentimentScore = -70;
+      sentimentConfidence = newsSentiment.articles?.some((a: any) => a.impact === 'high') ? 'high' : 'medium';
+    }
+    
+    // Calculate technical score (-100 to +100) based on trend score
+    const technicalScore = (analysis.trendScore / 10) * 100; // Normalize -10 to +10 range to -100 to +100
+    
+    // Calculate volume score (-100 to +100)
+    const volumeScore = analysis.volumeRatio > 1.5 ? 50 : 
+                        analysis.volumeRatio > 1.2 ? 30 :
+                        analysis.volumeRatio < 0.8 ? -30 : 0;
+    
+    // Weighted confidence score
+    const confidenceScore = (sentimentScore * sentimentWeight) + 
+                           (technicalScore * technicalWeight) + 
+                           (volumeScore * volumeWeight);
+    
+    // Strategy override logic (only when high confidence and conflicting signals)
     let strategyAutoCorrect = false;
-    if (newsSentiment.overall === 'negative' && prediction.optionType === 'CALL') {
-      console.error(`❌ STRATEGY CONFLICT: Negative sentiment but AI recommended CALL!`);
-      console.log('🔄 Auto-correcting strategy to PUT...');
+    const shouldOverride = sentimentConfidence === 'high' && Math.abs(sentimentScore) > 60;
+    
+    if (shouldOverride && newsSentiment.overall === 'negative' && prediction.optionType === 'CALL') {
+      console.error(`❌ STRATEGY CONFLICT: Strong negative sentiment (${sentimentScore}) but AI recommended CALL!`);
+      console.log(`🔄 Auto-correcting strategy to PUT (confidence: ${confidenceScore.toFixed(1)})...`);
       
       prediction.strategy = 'Long Put';
       prediction.optionType = 'PUT';
-      prediction.reasoning = `${prediction.reasoning} [AUTO-CORRECTED: Negative news sentiment requires bearish PUT strategy]`;
+      prediction.reasoning = `${prediction.reasoning} [AUTO-CORRECTED: High-confidence negative sentiment (${sentimentScore}) overrides technical signals]`;
       strategyAutoCorrect = true;
     }
     
-    if (newsSentiment.overall === 'positive' && prediction.optionType === 'PUT') {
-      console.error(`❌ STRATEGY CONFLICT: Positive sentiment but AI recommended PUT!`);
-      console.log('🔄 Auto-correcting strategy to CALL...');
+    if (shouldOverride && newsSentiment.overall === 'positive' && prediction.optionType === 'PUT') {
+      console.error(`❌ STRATEGY CONFLICT: Strong positive sentiment (${sentimentScore}) but AI recommended PUT!`);
+      console.log(`🔄 Auto-correcting strategy to CALL (confidence: ${confidenceScore.toFixed(1)})...`);
       
       prediction.strategy = 'Long Call';
       prediction.optionType = 'CALL';
-      prediction.reasoning = `${prediction.reasoning} [AUTO-CORRECTED: Positive news sentiment requires bullish CALL strategy]`;
+      prediction.reasoning = `${prediction.reasoning} [AUTO-CORRECTED: High-confidence positive sentiment (${sentimentScore}) overrides technical signals]`;
       strategyAutoCorrect = true;
     }
+    
+    // Add confidence score to prediction
+    prediction.confidenceScore = Math.round(confidenceScore);
+    prediction.sentimentWeight = Math.round(sentimentScore * sentimentWeight);
+    prediction.technicalWeight = Math.round(technicalScore * technicalWeight);
+    prediction.volumeWeight = Math.round(volumeScore * volumeWeight);
     
     // Override with real NSE premium if available
     if (dataSource === 'NSE_LIVE' && realCallPremium && prediction.optionType === 'CALL') {
@@ -1139,12 +1180,21 @@ Provide realistic options strategy:
         }
       }
       
-      // Track prediction for backtesting
+      // Track prediction for backtesting with market context
       try {
         await supabase.from('prediction_tracking').insert({
           symbol,
           option_type: type,
-          prediction_json: prediction,
+          prediction_json: {
+            ...prediction,
+            marketContext,
+            confidenceBreakdown: {
+              total: confidenceScore,
+              sentiment: sentimentScore * sentimentWeight,
+              technical: technicalScore * technicalWeight,
+              volume: volumeScore * volumeWeight
+            }
+          },
           predicted_strategy: prediction.strategy,
           predicted_direction: prediction.optionType,
           predicted_strike: prediction.strikePrice,
@@ -1155,9 +1205,10 @@ Provide realistic options strategy:
           technical_score: analysis.trendScore,
           trend_at_prediction: analysis.trend,
           rsi_at_prediction: analysis.rsi,
+          iv_rank_at_prediction: ivRank,
           tracked_until: new Date(new Date().getTime() + Math.min(daysToExpiry, 7) * 24 * 60 * 60 * 1000).toISOString()
         });
-        console.log('✓ Prediction tracked for backtesting');
+        console.log('✓ Prediction tracked for backtesting with market context');
       } catch (error) {
         console.error('Failed to track prediction:', error);
       }
@@ -1180,6 +1231,13 @@ Provide realistic options strategy:
         prediction, 
         historicalData,
         dataSource,
+        marketContext,
+        confidenceBreakdown: {
+          total: confidenceScore,
+          sentiment: sentimentScore * sentimentWeight,
+          technical: technicalScore * technicalWeight,
+          volume: volumeScore * volumeWeight
+        },
         realPremiums: {
           callPremium: realCallPremium,
           putPremium: realPutPremium,
@@ -1236,6 +1294,93 @@ Provide realistic options strategy:
     );
   }
 });
+
+// Fetch market context: Nifty correlation, VIX, time-of-day analysis
+async function fetchMarketContext(symbol: string, type: 'index' | 'share') {
+  const istTime = getCurrentISTTime();
+  const hour = istTime.getUTCHours();
+  const minute = istTime.getUTCMinutes();
+  
+  // Time-of-day analysis
+  const timeInMinutes = hour * 60 + minute;
+  const marketOpen = 9 * 60 + 15; // 9:15 AM
+  const firstHourEnd = 10 * 60 + 15; // 10:15 AM
+  const lastHourStart = 14 * 60 + 30; // 2:30 PM
+  const marketClose = 15 * 60 + 30; // 3:30 PM
+  
+  let timeOfDay: string;
+  let timeContext: string;
+  
+  if (timeInMinutes < marketOpen || timeInMinutes > marketClose) {
+    timeOfDay = 'Closed';
+    timeContext = 'Market is closed';
+  } else if (timeInMinutes <= firstHourEnd) {
+    timeOfDay = 'Opening Hour';
+    timeContext = 'High volatility expected, use wider stops';
+  } else if (timeInMinutes >= lastHourStart) {
+    timeOfDay = 'Closing Hour';
+    timeContext = 'Increased volatility, consider intraday exits';
+  } else {
+    timeOfDay = 'Mid-Session';
+    timeContext = 'Normal trading conditions';
+  }
+  
+  // Fetch Nifty 50 data for correlation (if analyzing a stock)
+  let niftyCorrelation = 'N/A';
+  let niftyTrend = 'Unknown';
+  
+  if (type === 'share') {
+    try {
+      const niftyData = await fetchStockData('^NSEI');
+      if (niftyData && niftyData.length > 0) {
+        const niftyAnalysis = analyzeData(niftyData);
+        niftyTrend = niftyAnalysis.trend;
+        niftyCorrelation = niftyTrend.includes('Bullish') ? 'Bullish Market' : 
+                          niftyTrend.includes('Bearish') ? 'Bearish Market' : 'Neutral Market';
+      }
+    } catch (error) {
+      console.error('Failed to fetch Nifty data for correlation:', error);
+    }
+  }
+  
+  // Fetch VIX (India VIX) from NSE
+  let vixLevel = 'Unknown';
+  let vixValue: number | null = null;
+  
+  try {
+    const cookies = await getNSECookies();
+    const vixResponse = await fetch('https://www.nseindia.com/api/allIndices', {
+      headers: {
+        ...NSE_HEADERS,
+        'Cookie': cookies,
+      },
+    });
+    
+    if (vixResponse.ok) {
+      const vixData = await vixResponse.json();
+      const vix = vixData.data?.find((idx: any) => idx.index === 'INDIA VIX');
+      if (vix && vix.last) {
+        vixValue = vix.last;
+        if (vixValue !== null) {
+          vixLevel = vixValue > 20 ? 'High (>20)' : vixValue > 15 ? 'Moderate (15-20)' : 'Low (<15)';
+          console.log(`India VIX: ${vixValue} (${vixLevel})`);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Failed to fetch VIX:', error);
+  }
+  
+  return {
+    timeOfDay,
+    timeContext,
+    niftyCorrelation,
+    niftyTrend,
+    vixLevel,
+    vixValue,
+    timestamp: istTime.toISOString()
+  };
+}
 
 async function fetchStockData(symbol: string) {
   try {
