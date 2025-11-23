@@ -81,3 +81,6 @@ verify_jwt = false
 
 [functions.approve-user]
 verify_jwt = false
+
+[functions.store-live-premiums]
+verify_jwt = false
