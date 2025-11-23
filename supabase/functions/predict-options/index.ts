@@ -203,12 +203,12 @@ async function fetchNSEOptionChain(symbol: string, type: 'index' | 'share'): Pro
   }
 }
 
-// Extract ATM premium from NSE option chain data
-function extractATMPremium(optionChainData: any, currentPrice: number, optionType: 'CE' | 'PE'): number | null {
+// Extract ATM premium and IV from NSE option chain data
+function extractATMPremiumAndIV(optionChainData: any, currentPrice: number, optionType: 'CE' | 'PE'): { premium: number | null, iv: number | null } {
   try {
     const records = optionChainData?.records?.data || [];
     
-    if (records.length === 0) return null;
+    if (records.length === 0) return { premium: null, iv: null };
     
     // Find ATM strike - different intervals for indices vs stocks
     let strikeInterval: number;
@@ -236,7 +236,8 @@ function extractATMPremium(optionChainData: any, currentPrice: number, optionTyp
       const nearestData = sortedRecords[0];
       const nearestLeg = optionType === 'CE' ? nearestData.CE : nearestData.PE;
       const premium = nearestLeg?.ltp ?? nearestLeg?.lastPrice ?? null;
-      return premium;
+      const iv = nearestLeg?.impliedVolatility ?? null;
+      return { premium, iv };
     }
     
     // Log NSE data for debugging
@@ -244,17 +245,86 @@ function extractATMPremium(optionChainData: any, currentPrice: number, optionTyp
     console.log(`NSE Data for ${optionType} at strike ${atmStrike}:`, {
       ltp: leg?.ltp,
       lastPrice: leg?.lastPrice,
+      impliedVolatility: leg?.impliedVolatility,
       strikePrice: atmData.strikePrice
     });
     
-    // Extract premium (use ltp first, fallback to lastPrice)
+    // Extract premium and IV (use ltp first, fallback to lastPrice)
     const premium = leg?.ltp ?? leg?.lastPrice ?? null;
+    const iv = leg?.impliedVolatility ?? null;
     
-    console.log(`${optionType} ATM premium at strike ${atmStrike}: ₹${premium}`);
-    return premium;
+    console.log(`${optionType} ATM at strike ${atmStrike}: Premium ₹${premium}, IV ${iv}%`);
+    return { premium, iv };
   } catch (error) {
-    console.error('Error extracting ATM premium:', error);
-    return null;
+    console.error('Error extracting ATM data:', error);
+    return { premium: null, iv: null };
+  }
+}
+
+// Calculate IV percentile from historical IV data
+async function calculateIVPercentile(symbol: string, currentIV: number, supabaseUrl: string, supabaseKey: string): Promise<{ ivRank: number, ivPercentile: number }> {
+  try {
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    // Fetch last 30 days of IV data
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const { data: historicalIV, error } = await supabase
+      .from('volatility_metrics')
+      .select('implied_volatility_avg')
+      .eq('symbol', symbol)
+      .gte('date', thirtyDaysAgo.toISOString().split('T')[0])
+      .not('implied_volatility_avg', 'is', null)
+      .order('date', { ascending: false });
+    
+    if (error || !historicalIV || historicalIV.length === 0) {
+      console.log('No historical IV data found, using default rank of 50');
+      return { ivRank: 50, ivPercentile: 50 };
+    }
+    
+    // Calculate IV percentile
+    const ivValues = historicalIV.map(d => d.implied_volatility_avg).filter(v => v !== null);
+    const belowCurrent = ivValues.filter(v => v < currentIV).length;
+    const ivPercentile = (belowCurrent / ivValues.length) * 100;
+    
+    // IV Rank is similar to percentile but normalized 0-100
+    const ivRank = Math.round(ivPercentile);
+    
+    console.log(`IV Analysis: Current=${currentIV}%, Rank=${ivRank}, Percentile=${ivPercentile.toFixed(1)}% (based on ${ivValues.length} days)`);
+    
+    return { ivRank, ivPercentile };
+  } catch (error) {
+    console.error('Error calculating IV percentile:', error);
+    return { ivRank: 50, ivPercentile: 50 };
+  }
+}
+
+// Store IV metrics in database
+async function storeIVMetrics(symbol: string, iv: number, ivRank: number, ivPercentile: number, supabaseUrl: string, supabaseKey: string) {
+  try {
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const today = new Date().toISOString().split('T')[0];
+    
+    const { error } = await supabase
+      .from('volatility_metrics')
+      .upsert({
+        symbol,
+        date: today,
+        implied_volatility_avg: iv,
+        iv_rank: ivRank,
+        iv_percentile: ivPercentile,
+      }, {
+        onConflict: 'symbol,date'
+      });
+    
+    if (error) {
+      console.error('Error storing IV metrics:', error);
+    } else {
+      console.log(`✓ Stored IV metrics for ${symbol}: IV=${iv}%, Rank=${ivRank}`);
+    }
+  } catch (error) {
+    console.error('Error in storeIVMetrics:', error);
   }
 }
 
@@ -616,25 +686,50 @@ Return this JSON format:
     console.log(`Fetching real option chain data from NSE for ${nseSymbolToFetch}`);
     const nseResult = await fetchNSEOptionChain(nseSymbolToFetch, type);
     
+    // Initialize IV variables
+    let realCallIV: number | null = null;
+    let realPutIV: number | null = null;
+    let ivRank = 50; // Default
+    let ivPercentile = 50; // Default
+    
     if (nseResult.data) {
-      realCallPremium = extractATMPremium(nseResult.data, analysis.current, 'CE');
-      realPutPremium = extractATMPremium(nseResult.data, analysis.current, 'PE');
+      const callData = extractATMPremiumAndIV(nseResult.data, analysis.current, 'CE');
+      const putData = extractATMPremiumAndIV(nseResult.data, analysis.current, 'PE');
+      
+      realCallPremium = callData.premium;
+      realPutPremium = putData.premium;
+      realCallIV = callData.iv;
+      realPutIV = putData.iv;
       nseMarketLot = nseResult.marketLot;
       
       if (realCallPremium || realPutPremium) {
         dataSource = 'NSE_LIVE';
         console.log(
-          `Successfully fetched NSE data - Call: ₹${realCallPremium ?? 'N/A'}, ` +
-          `Put: ₹${realPutPremium ?? 'N/A'}`
+          `Successfully fetched NSE data - Call: ₹${realCallPremium ?? 'N/A'} (IV: ${realCallIV ?? 'N/A'}%), ` +
+          `Put: ₹${realPutPremium ?? 'N/A'} (IV: ${realPutIV ?? 'N/A'}%)`
         );
       }
       
-      // PRIORITY 1: Use NSE API marketLot if available (most authoritative)
-      if (nseMarketLot && nseMarketLot > 0 && type === 'share') {
-        lotSize = nseMarketLot;
-        lotSizeSource = 'nse-api';
-        console.log(`✓ Lot size from NSE API (PRIORITY 1): ${lotSize} units`);
+      // Calculate IV percentile and rank if we have IV data
+      const supabaseUrl = Deno.env.get('SUPABASE_URL');
+      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      
+      if (supabaseUrl && supabaseKey && (realCallIV || realPutIV)) {
+        const avgIV = realCallIV && realPutIV ? (realCallIV + realPutIV) / 2 : (realCallIV || realPutIV)!;
+        const ivMetrics = await calculateIVPercentile(symbol, avgIV, supabaseUrl, supabaseKey);
+        ivRank = ivMetrics.ivRank;
+        ivPercentile = ivMetrics.ivPercentile;
+        
+        // Store IV metrics for future comparisons
+        await storeIVMetrics(symbol, avgIV, ivRank, ivPercentile, supabaseUrl, supabaseKey);
       }
+    }
+    
+    // PRIORITY 1: Use NSE API marketLot if available (most authoritative)
+    if (nseMarketLot && nseMarketLot > 0 && type === 'share') {
+      lotSize = nseMarketLot;
+      lotSizeSource = 'nse-api';
+      console.log(`✓ Lot size from NSE API (PRIORITY 1): ${lotSize} units`);
     }
     
     // Step 3: PRIORITY 2: Try NiftyTrader (only if NSE API didn't provide lot size)
@@ -709,27 +804,51 @@ Return this JSON format:
       console.log(`Applied time value multiplier for ${daysToExpiry} days: ₹${expectedPremiumMin}-${expectedPremiumMax}`);
     }
     
+    // Build IV context for AI
+    let ivContext: string;
+    const ivLevel = ivRank > 70 ? 'HIGH' : ivRank > 40 ? 'MODERATE' : 'LOW';
+    const ivStrategy = ivRank > 70 ? 'Consider buying strategies - premiums are elevated' : 
+                       ivRank > 40 ? 'Balanced approach - moderate premiums' : 
+                       'Premium buying opportunities - IV is low';
+    
+    if (realCallIV || realPutIV) {
+      const avgIV = realCallIV && realPutIV ? (realCallIV + realPutIV) / 2 : (realCallIV || realPutIV)!;
+      ivContext = `IMPLIED VOLATILITY (Real NSE Data):
+- Current IV: ${avgIV.toFixed(2)}% (Call: ${realCallIV?.toFixed(2) ?? 'N/A'}%, Put: ${realPutIV?.toFixed(2) ?? 'N/A'}%)
+- IV Rank: ${ivRank}/100 (${ivLevel})
+- IV Percentile: ${ivPercentile.toFixed(1)}%
+- Strategy Guidance: ${ivStrategy}
+
+IV Rank ${ivRank} means current IV is ${ivRank > 50 ? 'ABOVE' : 'BELOW'} average levels.`;
+    } else {
+      ivContext = `IMPLIED VOLATILITY (Estimated):
+- IV Rank: ${ivRank}/100 (using historical averages)
+- IV Level: MODERATE (default)
+
+Note: Real IV data not available from NSE.`;
+    }
+    
     // Build premium context for AI
     let premiumContext: string;
     
     if (dataSource === 'NSE_LIVE' && realCallPremium && realPutPremium) {
       premiumContext = `REAL OPTION PREMIUMS (from NSE Live Data):
-- ATM Call Premium: ₹${realCallPremium} per lot
-- ATM Put Premium: ₹${realPutPremium} per lot
+- ATM Call Premium: ₹${realCallPremium} per lot (IV: ${realCallIV?.toFixed(2) ?? 'N/A'}%)
+- ATM Put Premium: ₹${realPutPremium} per lot (IV: ${realPutIV?.toFixed(2) ?? 'N/A'}%)
 - Data Source: Live NSE Option Chain
 - Days to Expiry: ${daysToExpiry}
 
 Use these REAL premiums for your recommendation. Suggest strikes near ATM based on market view.`;
     } else if (dataSource === 'NSE_LIVE' && realCallPremium) {
       premiumContext = `REAL OPTION PREMIUM (from NSE Live Data):
-- ATM Call Premium: ₹${realCallPremium} per lot
+- ATM Call Premium: ₹${realCallPremium} per lot (IV: ${realCallIV?.toFixed(2) ?? 'N/A'}%)
 - Data Source: Live NSE Option Chain (Call side)
 - Days to Expiry: ${daysToExpiry}
 
 Use this REAL CALL premium for your recommendation.`;
     } else if (dataSource === 'NSE_LIVE' && realPutPremium) {
       premiumContext = `REAL OPTION PREMIUM (from NSE Live Data):
-- ATM Put Premium: ₹${realPutPremium} per lot
+- ATM Put Premium: ₹${realPutPremium} per lot (IV: ${realPutIV?.toFixed(2) ?? 'N/A'}%)
 - Data Source: Live NSE Option Chain (Put side)
 - Days to Expiry: ${daysToExpiry}
 
@@ -751,6 +870,8 @@ MARKET DATA:
 - Expiry: ${expiryDate}
 - Lot Size: ${lotSize}
 ${isExpiryToday ? '- ⚠️ TODAY IS EXPIRY DAY - Intraday only, exit before 3:15 PM IST' : `- Days to Expiry: ${daysToExpiry}`}
+
+${ivContext}
 
 ${premiumContext}
 
@@ -827,7 +948,7 @@ Provide realistic options strategy:
   "maxLoss": <totalInvestment>,
   "maxGain": <realistic gain in rupees>,
   "breakeven": <strike ± premium>,
-  "ivRank": <0-100>,
+  "ivRank": ${ivRank},
   "greeks": {"delta": <0.4-0.6>, "gamma": <0.01-0.05>, "theta": <-10 to -50>, "vega": <50-150>},
   "reasoning": "Brief analysis (2-3 lines) including news sentiment impact and technical factors",
   "riskLevel": "Low|Medium|High",
@@ -1059,10 +1180,18 @@ Provide realistic options strategy:
         prediction, 
         historicalData,
         dataSource,
-        realPremiums: dataSource === 'NSE_LIVE' && realCallPremium && realPutPremium ? {
+        realPremiums: {
           callPremium: realCallPremium,
           putPremium: realPutPremium,
-        } : null,
+          callIV: realCallIV,
+          putIV: realPutIV
+        },
+        ivAnalysis: {
+          ivRank,
+          ivPercentile,
+          level: ivLevel,
+          strategy: ivStrategy
+        },
         expiryInfo: {
           date: expiryDateISO,
           formatted: expiryDate,
