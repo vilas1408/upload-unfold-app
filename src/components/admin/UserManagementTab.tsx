@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Check, X, Search, Shield, User } from 'lucide-react';
+import { Check, X, Search, Shield, User, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -136,6 +136,38 @@ export const UserManagementTab = ({ onStatsUpdate }: UserManagementTabProps) => 
     await loadProfiles();
   };
 
+  const handleDelete = async (userId: string, email: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (user?.id === userId) {
+      toast.error('You cannot delete your own account');
+      return;
+    }
+
+    if (!confirm(`⚠️ PERMANENT DELETION\n\nAre you sure you want to delete ${email}?\n\nThis will:\n• Remove their account completely\n• Delete all their predictions\n• Remove all their data\n\nThis action CANNOT be undone!`)) {
+      return;
+    }
+
+    setProcessingIds(prev => new Set(prev).add(userId));
+
+    const { error } = await supabase.functions.invoke('admin-approve-user', {
+      body: { user_id: userId, action: 'delete' }
+    });
+
+    if (error) {
+      toast.error(`Failed to delete user: ${error.message}`);
+    } else {
+      toast.success(`User ${email} permanently deleted`);
+      await loadProfiles();
+    }
+
+    setProcessingIds(prev => {
+      const next = new Set(prev);
+      next.delete(userId);
+      return next;
+    });
+  };
+
   const filteredProfiles = profiles.filter(p => 
     p.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.mobile_number?.includes(searchTerm)
@@ -251,7 +283,7 @@ export const UserManagementTab = ({ onStatsUpdate }: UserManagementTabProps) => 
                     <TableCell>{format(new Date(profile.created_at), 'PP')}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        {!profile.is_approved && (
+                        {!profile.is_approved ? (
                           <>
                             <Button
                               size="sm"
@@ -270,6 +302,16 @@ export const UserManagementTab = ({ onStatsUpdate }: UserManagementTabProps) => 
                               <X className="h-4 w-4" />
                             </Button>
                           </>
+                        ) : (
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            onClick={() => handleDelete(profile.id, profile.email)}
+                            disabled={processingIds.has(profile.id)}
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         )}
                       </div>
                     </TableCell>

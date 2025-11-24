@@ -132,6 +132,51 @@ Deno.serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
 
+    } else if (action === 'delete') {
+      // Prevent self-deletion
+      if (user_id === user.id) {
+        return new Response(
+          JSON.stringify({ error: 'Cannot delete your own account' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Get user email for logging
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('id', user_id)
+        .single();
+
+      // Delete profile (cascades to user_roles and user_plans)
+      const { error: deleteProfileError } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', user_id);
+
+      if (deleteProfileError) {
+        throw deleteProfileError;
+      }
+
+      // Delete auth user
+      const { error: deleteUserError } = await supabase.auth.admin.deleteUser(user_id);
+      if (deleteUserError) {
+        throw deleteUserError;
+      }
+
+      // Log deletion
+      await supabase.from('admin_activity_log').insert({
+        admin_id: user.id,
+        action: 'delete_user',
+        target_id: user_id,
+        details: { email: profileData?.email, timestamp: new Date().toISOString() }
+      });
+
+      return new Response(
+        JSON.stringify({ success: true, message: 'User permanently deleted' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+
     } else {
       return new Response(JSON.stringify({ error: 'Invalid action' }), {
         status: 400,

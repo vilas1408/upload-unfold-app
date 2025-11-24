@@ -7,6 +7,9 @@ import Footer from "@/components/Footer";
 import AccuracyDashboard from "@/components/AccuracyDashboard";
 import OptionsSelector from "@/components/OptionsSelector";
 import OptionsPredictionDisplay from "@/components/OptionsPredictionDisplay";
+import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { TrendingUp } from "lucide-react";
 
 const OptionsTrading = () => {
   const navigate = useNavigate();
@@ -22,6 +25,11 @@ const OptionsTrading = () => {
   const [dataSource, setDataSource] = useState<'NSE_LIVE' | 'AI_ESTIMATED' | null>(null);
   const [realPremiums, setRealPremiums] = useState<{ callPremium: number; putPremium: number } | null>(null);
   const [expiryInfo, setExpiryInfo] = useState<any | null>(null);
+  const [userPlan, setUserPlan] = useState<{
+    plan: string;
+    daily_limit: number;
+    used_today: number;
+  } | null>(null);
 
   useEffect(() => {
     // Check if user is logged in
@@ -40,6 +48,39 @@ const OptionsTrading = () => {
 
     return () => subscription.unsubscribe();
   }, [navigate]);
+
+  useEffect(() => {
+    const fetchUserQuota = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      
+      // Get plan
+      const { data: planData } = await supabase
+        .from('user_plans')
+        .select('plan, daily_prediction_limit')
+        .eq('user_id', user.id)
+        .single();
+      
+      // Count today's predictions (IST timezone)
+      const istNow = new Date();
+      const todayIST = istNow.toISOString().split('T')[0];
+      
+      const { count } = await supabase
+        .from('prediction_tracking')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .gte('predicted_at', `${todayIST}T00:00:00`)
+        .lt('predicted_at', `${todayIST}T23:59:59`);
+      
+      setUserPlan({
+        plan: planData?.plan || 'free',
+        daily_limit: planData?.daily_prediction_limit || 3,
+        used_today: count || 0
+      });
+    };
+    
+    fetchUserQuota();
+  }, [navigate, prediction]); // Refresh after prediction
 
   const handleSelectOption = async (symbol: string, name: string, type: 'share' | 'index') => {
     setSelectedOption({ symbol, name, type });
@@ -105,6 +146,39 @@ const OptionsTrading = () => {
         </div>
         
         <AccuracyDashboard />
+        
+        {/* Quota Banner */}
+        {userPlan && userPlan.plan === 'free' && (
+          <Card className={`mb-6 ${userPlan.used_today >= userPlan.daily_limit ? 'border-destructive' : 'border-orange-500'}`}>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Daily Predictions Quota
+                </span>
+                <Badge 
+                  variant={userPlan.used_today >= userPlan.daily_limit ? "destructive" : "default"}
+                  className="text-base px-3 py-1"
+                >
+                  {userPlan.used_today} / {userPlan.daily_limit} used today
+                </Badge>
+              </CardTitle>
+              <CardDescription>
+                {userPlan.used_today >= userPlan.daily_limit ? (
+                  <span className="text-destructive font-medium">
+                    ⚠️ You've reached your daily limit of {userPlan.daily_limit} predictions. 
+                    Your quota resets at midnight IST. Upgrade to Premium for unlimited predictions.
+                  </span>
+                ) : (
+                  <span>
+                    You have <strong>{userPlan.daily_limit - userPlan.used_today} predictions</strong> remaining today. 
+                    Quota resets daily at midnight IST.
+                  </span>
+                )}
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        )}
         
         <OptionsSelector onSelectOption={handleSelectOption} />
         
