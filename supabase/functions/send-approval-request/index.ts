@@ -50,11 +50,11 @@ const handler = async (req: Request): Promise<Response> => {
       "New User Registration Approval Required",
       `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: #333;">New User Registration</h1>
-          <p>A new user has signed up and is awaiting approval:</p>
+          <h1 style="color: #333;">New User Registration - Email Verified ✓</h1>
+          <p>A new user has completed email verification and is requesting access:</p>
           
           <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <p><strong>Email:</strong> ${email}</p>
+            <p><strong>Email:</strong> ${email} <span style="color: #22c55e;">✓ Verified</span></p>
             <p><strong>Mobile Number:</strong> ${mobile_number}</p>
             <p><strong>Date of Birth:</strong> ${date_of_birth}</p>
             <p><strong>User ID:</strong> ${user_id}</p>
