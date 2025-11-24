@@ -561,6 +561,80 @@ serve(async (req) => {
     
     console.log('Predicting options for:', symbol, name, type);
 
+    // Initialize Supabase client
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    // Extract user from JWT token
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Authentication required' }),
+        { status: 401, headers: corsHeaders }
+      );
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid authentication' }),
+        { status: 401, headers: corsHeaders }
+      );
+    }
+
+    // Check user's plan and daily limit
+    const { data: planData, error: planError } = await supabase
+      .from('user_plans')
+      .select('plan, daily_prediction_limit')
+      .eq('user_id', user.id)
+      .single();
+
+    if (planError || !planData) {
+      console.error('Plan fetch error:', planError);
+      return new Response(
+        JSON.stringify({ error: 'User plan not found. Please contact support.' }),
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    // Count today's predictions (IST timezone)
+    const istNow = getCurrentISTTime();
+    const todayIST = istNow.toISOString().split('T')[0];
+
+    const { count: todayCount, error: countError } = await supabase
+      .from('prediction_tracking')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .gte('predicted_at', `${todayIST}T00:00:00`)
+      .lt('predicted_at', `${todayIST}T23:59:59`);
+
+    if (countError) {
+      console.error('Count error:', countError);
+    }
+
+    const predictionsUsed = todayCount || 0;
+
+    // Check if limit exceeded (premium users have -1 = unlimited)
+    if (planData.daily_prediction_limit !== -1 && predictionsUsed >= planData.daily_prediction_limit) {
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          error: `Daily prediction limit reached (${predictionsUsed}/${planData.daily_prediction_limit})`,
+          limit: planData.daily_prediction_limit,
+          used: predictionsUsed,
+          plan: planData.plan,
+          message: `You've used all ${planData.daily_prediction_limit} free predictions today. Upgrade to Premium for unlimited predictions or try again tomorrow.`
+        }),
+        { status: 429, headers: corsHeaders }
+      );
+    }
+
+    console.log(`✅ User ${user.email} quota check: ${predictionsUsed}/${planData.daily_prediction_limit} used today`);
+
     // Fetch historical data
     const historicalData = await fetchStockData(symbol);
     let analysis = analyzeData(historicalData); // Will be re-analyzed after news fetch
@@ -1540,6 +1614,7 @@ Position Sizing:
       // Track prediction for backtesting with market context
       try {
         await supabase.from('prediction_tracking').insert({
+          user_id: user.id,
           symbol,
           option_type: type,
           prediction_json: {

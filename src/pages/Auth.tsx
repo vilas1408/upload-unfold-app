@@ -7,8 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { TrendingUp, Mail } from "lucide-react";
+import { TrendingUp, Mail, Check } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -417,6 +418,71 @@ const Auth = () => {
                     required
                   />
                 </div>
+                
+                {/* Plan Information */}
+                <div className="space-y-3 pt-4 border-t">
+                  <Label className="text-base">Your Plan</Label>
+                  <Card className="border-2 border-primary bg-primary/5">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-lg">Free Plan</CardTitle>
+                        <Badge>Default</Badge>
+                      </div>
+                      <CardDescription>Included with your account</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="text-sm space-y-2">
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-primary" />
+                          <span><strong>3 predictions per day</strong></span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-primary" />
+                          <span>News sentiment analysis</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-primary" />
+                          <span>Technical indicators (RSI, MACD, etc.)</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-primary" />
+                          <span>Greeks analysis</span>
+                        </li>
+                      </ul>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card className="border opacity-60">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-lg text-muted-foreground">Premium Plan</CardTitle>
+                        <Badge variant="outline">Coming Soon</Badge>
+                      </div>
+                      <CardDescription>For professional traders</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="text-sm space-y-2 text-muted-foreground">
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4" />
+                          <span><strong>Unlimited predictions</strong></span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4" />
+                          <span>Real-time alerts</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4" />
+                          <span>Advanced backtesting</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4" />
+                          <span>Priority support</span>
+                        </li>
+                      </ul>
+                    </CardContent>
+                  </Card>
+                </div>
+                
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? "Creating account..." : "Sign Up"}
                 </Button>

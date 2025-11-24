@@ -207,6 +207,7 @@ export type Database = {
           technical_score: number | null
           tracked_until: string | null
           trend_at_prediction: string | null
+          user_id: string | null
         }
         Insert: {
           actual_entry_premium?: number | null
@@ -238,6 +239,7 @@ export type Database = {
           technical_score?: number | null
           tracked_until?: string | null
           trend_at_prediction?: string | null
+          user_id?: string | null
         }
         Update: {
           actual_entry_premium?: number | null
@@ -269,8 +271,17 @@ export type Database = {
           technical_score?: number | null
           tracked_until?: string | null
           trend_at_prediction?: string | null
+          user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "prediction_tracking_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -419,6 +430,41 @@ export type Database = {
         }
         Relationships: []
       }
+      user_plans: {
+        Row: {
+          created_at: string | null
+          daily_prediction_limit: number
+          id: string
+          plan: Database["public"]["Enums"]["subscription_plan"]
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          daily_prediction_limit?: number
+          id?: string
+          plan?: Database["public"]["Enums"]["subscription_plan"]
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          daily_prediction_limit?: number
+          id?: string
+          plan?: Database["public"]["Enums"]["subscription_plan"]
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_plans_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           assigned_at: string | null
@@ -502,6 +548,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
+      subscription_plan: "free" | "premium"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -630,6 +677,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
+      subscription_plan: ["free", "premium"],
     },
   },
 } as const
