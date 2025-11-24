@@ -17,34 +17,6 @@ const NSE_HEADERS = {
   'Accept-Encoding': 'gzip, deflate, br',
 };
 
-// PRIORITY 6: News Source Credibility Weights
-const NEWS_SOURCE_WEIGHTS: { [key: string]: number } = {
-  'economictimes.com': 1.0,
-  'moneycontrol.com': 1.0,
-  'livemint.com': 1.0,
-  'business-standard.com': 1.0,
-  'financialexpress.com': 0.8,
-  'ndtv.com': 0.8,
-  'reuters.com': 0.8,
-  'bloomberg.com': 0.8,
-  'Google News': 0.5,
-  'default': 0.3
-};
-
-// PRIORITY 6: Sector correlation mapping
-const SECTOR_MAPPING: { [key: string]: string[] } = {
-  'ICICIBANK': ['banking sector India', 'HDFC Bank', 'SBI'],
-  'HDFCBANK': ['banking sector India', 'ICICI Bank', 'SBI'],
-  'SBIN': ['banking sector India', 'ICICI Bank', 'HDFC Bank'],
-  'AXISBANK': ['banking sector India', 'ICICI Bank', 'Kotak'],
-  'RELIANCE': ['oil sector India', 'energy stocks India', 'petrochemical'],
-  'TCS': ['IT sector India', 'Infosys', 'Wipro'],
-  'INFY': ['IT sector India', 'TCS', 'HCL Tech'],
-  'WIPRO': ['IT sector India', 'TCS', 'Infosys'],
-  'TATAMOTORS': ['auto sector India', 'automobile India', 'Maruti'],
-  'MARUTI': ['auto sector India', 'automobile India', 'Mahindra']
-};
-
 // Get current time in IST (UTC + 5:30)
 function getCurrentISTTime(): Date {
   const now = new Date();
@@ -231,12 +203,12 @@ async function fetchNSEOptionChain(symbol: string, type: 'index' | 'share'): Pro
   }
 }
 
-// Extract ATM premium and IV from NSE option chain data
-function extractATMPremiumAndIV(optionChainData: any, currentPrice: number, optionType: 'CE' | 'PE'): { premium: number | null, iv: number | null } {
+// Extract ATM premium from NSE option chain data
+function extractATMPremium(optionChainData: any, currentPrice: number, optionType: 'CE' | 'PE'): number | null {
   try {
     const records = optionChainData?.records?.data || [];
     
-    if (records.length === 0) return { premium: null, iv: null };
+    if (records.length === 0) return null;
     
     // Find ATM strike - different intervals for indices vs stocks
     let strikeInterval: number;
@@ -264,8 +236,7 @@ function extractATMPremiumAndIV(optionChainData: any, currentPrice: number, opti
       const nearestData = sortedRecords[0];
       const nearestLeg = optionType === 'CE' ? nearestData.CE : nearestData.PE;
       const premium = nearestLeg?.ltp ?? nearestLeg?.lastPrice ?? null;
-      const iv = nearestLeg?.impliedVolatility ?? null;
-      return { premium, iv };
+      return premium;
     }
     
     // Log NSE data for debugging
@@ -273,86 +244,17 @@ function extractATMPremiumAndIV(optionChainData: any, currentPrice: number, opti
     console.log(`NSE Data for ${optionType} at strike ${atmStrike}:`, {
       ltp: leg?.ltp,
       lastPrice: leg?.lastPrice,
-      impliedVolatility: leg?.impliedVolatility,
       strikePrice: atmData.strikePrice
     });
     
-    // Extract premium and IV (use ltp first, fallback to lastPrice)
+    // Extract premium (use ltp first, fallback to lastPrice)
     const premium = leg?.ltp ?? leg?.lastPrice ?? null;
-    const iv = leg?.impliedVolatility ?? null;
     
-    console.log(`${optionType} ATM at strike ${atmStrike}: Premium ₹${premium}, IV ${iv}%`);
-    return { premium, iv };
+    console.log(`${optionType} ATM premium at strike ${atmStrike}: ₹${premium}`);
+    return premium;
   } catch (error) {
-    console.error('Error extracting ATM data:', error);
-    return { premium: null, iv: null };
-  }
-}
-
-// Calculate IV percentile from historical IV data
-async function calculateIVPercentile(symbol: string, currentIV: number, supabaseUrl: string, supabaseKey: string): Promise<{ ivRank: number, ivPercentile: number }> {
-  try {
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    
-    // Fetch last 30 days of IV data
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    const { data: historicalIV, error } = await supabase
-      .from('volatility_metrics')
-      .select('implied_volatility_avg')
-      .eq('symbol', symbol)
-      .gte('date', thirtyDaysAgo.toISOString().split('T')[0])
-      .not('implied_volatility_avg', 'is', null)
-      .order('date', { ascending: false });
-    
-    if (error || !historicalIV || historicalIV.length === 0) {
-      console.log('No historical IV data found, using default rank of 50');
-      return { ivRank: 50, ivPercentile: 50 };
-    }
-    
-    // Calculate IV percentile
-    const ivValues = historicalIV.map(d => d.implied_volatility_avg).filter(v => v !== null);
-    const belowCurrent = ivValues.filter(v => v < currentIV).length;
-    const ivPercentile = (belowCurrent / ivValues.length) * 100;
-    
-    // IV Rank is similar to percentile but normalized 0-100
-    const ivRank = Math.round(ivPercentile);
-    
-    console.log(`IV Analysis: Current=${currentIV}%, Rank=${ivRank}, Percentile=${ivPercentile.toFixed(1)}% (based on ${ivValues.length} days)`);
-    
-    return { ivRank, ivPercentile };
-  } catch (error) {
-    console.error('Error calculating IV percentile:', error);
-    return { ivRank: 50, ivPercentile: 50 };
-  }
-}
-
-// Store IV metrics in database
-async function storeIVMetrics(symbol: string, iv: number, ivRank: number, ivPercentile: number, supabaseUrl: string, supabaseKey: string) {
-  try {
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    const today = new Date().toISOString().split('T')[0];
-    
-    const { error } = await supabase
-      .from('volatility_metrics')
-      .upsert({
-        symbol,
-        date: today,
-        implied_volatility_avg: iv,
-        iv_rank: ivRank,
-        iv_percentile: ivPercentile,
-      }, {
-        onConflict: 'symbol,date'
-      });
-    
-    if (error) {
-      console.error('Error storing IV metrics:', error);
-    } else {
-      console.log(`✓ Stored IV metrics for ${symbol}: IV=${iv}%, Rank=${ivRank}`);
-    }
-  } catch (error) {
-    console.error('Error in storeIVMetrics:', error);
+    console.error('Error extracting ATM premium:', error);
+    return null;
   }
 }
 
@@ -368,182 +270,6 @@ function calculateEstimatedPremium(baseMin: number, baseMax: number, daysToExpir
     min: Math.round(baseMin * multiplier),
     max: Math.round(baseMax * multiplier),
     mid: Math.round(((baseMin + baseMax) / 2) * multiplier),
-  };
-}
-
-// PRIORITY 6: Check if article is high quality
-function isHighQualityArticle(article: any): boolean {
-  const title = article.title?.toLowerCase() || '';
-  
-  if (title.includes('shocking') || title.includes('you won\'t believe') || 
-      title.includes('breaking:') || title.includes('!!!')) {
-    return false;
-  }
-  
-  if (title.length < 20) return false;
-  
-  const articleDate = new Date(article.publishedAt);
-  const daysDiff = (Date.now() - articleDate.getTime()) / (1000 * 60 * 60 * 24);
-  if (daysDiff > 7) return false;
-  
-  return true;
-}
-
-// PRIORITY 6: Detect major events from article text
-function detectMajorEvents(article: any): { hasEvent: boolean, eventType: string | null, impact: string } {
-  const text = `${article.title} ${article.description || ''}`.toLowerCase();
-  
-  const events = {
-    'earnings': ['earnings', 'quarterly results', 'q1', 'q2', 'q3', 'q4', 'profit', 'revenue', 'results'],
-    'rbi_policy': ['rbi', 'monetary policy', 'interest rate', 'repo rate', 'central bank'],
-    'corporate_action': ['merger', 'acquisition', 'buyback', 'dividend', 'rights issue', 'split'],
-    'regulatory': ['sebi', 'regulatory', 'investigation', 'penalty', 'compliance'],
-    'management': ['ceo', 'cfo', 'resignation', 'appointment', 'founder']
-  };
-  
-  for (const [eventType, keywords] of Object.entries(events)) {
-    if (keywords.some(keyword => text.includes(keyword))) {
-      const impact = eventType === 'earnings' || eventType === 'rbi_policy' ? 'high' : 'medium';
-      return { hasEvent: true, eventType, impact };
-    }
-  }
-  
-  return { hasEvent: false, eventType: null, impact: 'none' };
-}
-
-// PRIORITY 6: Get source credibility weight
-function getSourceWeight(sourceName: string): number {
-  for (const [source, weight] of Object.entries(NEWS_SOURCE_WEIGHTS)) {
-    if (sourceName.toLowerCase().includes(source.toLowerCase())) {
-      return weight;
-    }
-  }
-  return NEWS_SOURCE_WEIGHTS['default'];
-}
-
-// PRIORITY 7: Calculate Black-Scholes Greeks
-interface GreeksResult {
-  delta: number;
-  gamma: number;
-  theta: number;
-  vega: number;
-  rho: number;
-}
-
-function calculateBlackScholesGreeks(
-  spot: number,
-  strike: number,
-  timeToExpiry: number,
-  volatility: number,
-  riskFreeRate: number,
-  optionType: 'CE' | 'PE'
-): GreeksResult {
-  const S = spot;
-  const K = strike;
-  const T = timeToExpiry;
-  const sigma = volatility;
-  const r = riskFreeRate;
-  
-  const d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T));
-  const d2 = d1 - sigma * Math.sqrt(T);
-  
-  const N = (x: number) => {
-    const t = 1 / (1 + 0.2316419 * Math.abs(x));
-    const d = 0.3989423 * Math.exp(-x * x / 2);
-    const prob = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
-    return x > 0 ? 1 - prob : prob;
-  };
-  
-  const n = (x: number) => Math.exp(-x * x / 2) / Math.sqrt(2 * Math.PI);
-  
-  let delta: number, gamma: number, theta: number, vega: number, rho: number;
-  
-  if (optionType === 'CE') {
-    delta = N(d1);
-    gamma = n(d1) / (S * sigma * Math.sqrt(T));
-    theta = (-(S * n(d1) * sigma) / (2 * Math.sqrt(T)) - r * K * Math.exp(-r * T) * N(d2)) / 365;
-    vega = S * n(d1) * Math.sqrt(T) / 100;
-    rho = K * T * Math.exp(-r * T) * N(d2) / 100;
-  } else {
-    delta = N(d1) - 1;
-    gamma = n(d1) / (S * sigma * Math.sqrt(T));
-    theta = (-(S * n(d1) * sigma) / (2 * Math.sqrt(T)) + r * K * Math.exp(-r * T) * N(-d2)) / 365;
-    vega = S * n(d1) * Math.sqrt(T) / 100;
-    rho = -K * T * Math.exp(-r * T) * N(-d2) / 100;
-  }
-  
-  return {
-    delta: Math.round(delta * 1000) / 1000,
-    gamma: Math.round(gamma * 10000) / 10000,
-    theta: Math.round(theta * 100) / 100,
-    vega: Math.round(vega * 100) / 100,
-    rho: Math.round(rho * 100) / 100
-  };
-}
-
-// PRIORITY 7: Validate prediction with Greeks
-function validatePredictionWithGreeks(
-  greeks: GreeksResult,
-  daysToExpiry: number,
-  ivRank: number
-): { warnings: string[], riskAdjustment: number } {
-  const warnings: string[] = [];
-  let riskAdjustment = 0;
-  
-  if (Math.abs(greeks.delta) < 0.3) {
-    warnings.push('Low delta (<0.3) - option may not move much with underlying');
-    riskAdjustment -= 10;
-  }
-  
-  if (daysToExpiry <= 5 && greeks.theta < -50) {
-    warnings.push(`High time decay (₹${Math.abs(greeks.theta)}/day) - rapid premium erosion`);
-    riskAdjustment -= 15;
-  }
-  
-  if (ivRank > 70 && greeks.vega > 100) {
-    warnings.push('High vega + elevated IV - premium may collapse if volatility drops');
-    riskAdjustment -= 10;
-  }
-  
-  if (greeks.gamma > 0.05) {
-    warnings.push('High gamma - delta will change rapidly, requires active monitoring');
-  }
-  
-  if (ivRank < 30 && greeks.vega > 80) {
-    warnings.push('✓ Low IV + high vega - good setup for volatility expansion');
-    riskAdjustment += 10;
-  }
-  
-  return { warnings, riskAdjustment };
-}
-
-// PRIORITY 7: Position sizing recommendation
-function getPositionSizeRecommendation(
-  greeks: GreeksResult,
-  ivRank: number,
-  daysToExpiry: number
-): { sizeMultiplier: number, reasoning: string } {
-  let sizeMultiplier = 1.0;
-  const reasons: string[] = [];
-  
-  if (greeks.theta < -50 && daysToExpiry <= 5) {
-    sizeMultiplier *= 0.7;
-    reasons.push('Reduced due to high time decay');
-  }
-  
-  if (ivRank > 70) {
-    sizeMultiplier *= 0.8;
-    reasons.push('Reduced due to elevated IV');
-  }
-  
-  if (Math.abs(greeks.delta) > 0.5 && greeks.theta > -30 && ivRank < 40) {
-    sizeMultiplier *= 1.2;
-    reasons.push('Increased due to favorable risk/reward');
-  }
-  
-  return {
-    sizeMultiplier: Math.round(sizeMultiplier * 100) / 100,
-    reasoning: reasons.length > 0 ? reasons.join('; ') : 'Standard position size'
   };
 }
 
@@ -565,19 +291,9 @@ serve(async (req) => {
     const historicalData = await fetchStockData(symbol);
     let analysis = analyzeData(historicalData); // Will be re-analyzed after news fetch
     
-    // PRIORITY 4: Fetch Market Context (Nifty correlation, VIX, time-of-day)
-    const marketContext = await fetchMarketContext(symbol, type);
-    
-    // PRIORITY 6: Enhanced news fetching with source credibility and event detection
+    // Fetch news with multiple sources and fallbacks
     const NEWS_API_KEY = Deno.env.get('NEWS_API_KEY');
-    let newsSentiment: { overall: string; summary: string; articles: any[]; confidence?: number } = { 
-      overall: 'neutral', 
-      summary: 'No recent news available', 
-      articles: [],
-      confidence: 50 
-    };
-    let detectedEvents: any[] = [];
-    let sectorSentiment: string | null = null;
+    let newsSentiment = { overall: 'neutral', summary: 'No recent news available', articles: [] };
     
     // Helper function to fetch and parse Google News RSS
     const fetchGoogleNewsRSS = async (query: string): Promise<any[]> => {
@@ -689,67 +405,14 @@ serve(async (req) => {
         
         // Analyze sentiment if we have articles
         if (articles.length > 0) {
-          // PRIORITY 6: Filter high-quality articles
-          const qualityArticles = articles.filter(isHighQualityArticle);
-          console.log(`Filtered ${qualityArticles.length}/${articles.length} high-quality articles`);
-          
-          // PRIORITY 6: Detect major events
-          for (const article of qualityArticles.slice(0, 10)) {
-            const eventInfo = detectMajorEvents(article);
-            if (eventInfo.hasEvent) {
-              detectedEvents.push({
-                title: article.title,
-                eventType: eventInfo.eventType,
-                impact: eventInfo.impact
-              });
-              console.log(`⚠️ Event detected: ${eventInfo.eventType} (${eventInfo.impact} impact) - ${article.title}`);
-            }
-          }
-          
           // Use Lovable AI to analyze sentiment of real news articles
           const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
           if (LOVABLE_API_KEY) {
-            const articlesForAnalysis = qualityArticles.slice(0, 10).map((a: any) => ({
+            const articlesForAnalysis = articles.slice(0, 10).map((a: any) => ({
               title: a.title,
               description: a.description || a.title,
-              source: a.source?.name,
-              credibilityWeight: getSourceWeight(a.source?.name || 'default')
+              source: a.source?.name
             }));
-            
-            // PRIORITY 6: Fetch sector-wide sentiment for correlation
-            if (SECTOR_MAPPING[symbol]) {
-              try {
-                const sectorQuery = SECTOR_MAPPING[symbol][0];
-                console.log(`Fetching sector sentiment for: ${sectorQuery}`);
-                const sectorArticles = await fetchGoogleNewsRSS(sectorQuery);
-                
-                if (sectorArticles.length > 0) {
-                  const sectorSentimentResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                      'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                      model: 'google/gemini-2.5-flash',
-                      messages: [
-                        { role: 'system', content: 'You are a financial sector sentiment analyzer. Return ONLY: "positive", "negative", or "neutral".' },
-                        { role: 'user', content: `Analyze sector sentiment from these headlines:\n${sectorArticles.slice(0, 5).map((a: any) => a.title).join('\n')}` }
-                      ],
-                      temperature: 0.2,
-                    }),
-                  });
-                  
-                  if (sectorSentimentResponse.ok) {
-                    const sectorData = await sectorSentimentResponse.json();
-                    sectorSentiment = sectorData.choices?.[0]?.message?.content?.toLowerCase().trim();
-                    console.log(`Sector sentiment: ${sectorSentiment}`);
-                  }
-                }
-              } catch (error) {
-                console.error('Sector sentiment fetch failed:', error);
-              }
-            }
             
             const sentimentResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
               method: 'POST',
@@ -762,23 +425,17 @@ serve(async (req) => {
                 messages: [
                   {
                     role: 'system',
-                    content: `You are a financial news sentiment analyzer with source credibility awareness. Higher credibility sources (economictimes.com, moneycontrol.com) should have more weight. Analyze sentiment and return ONLY valid JSON.`
+                    content: 'You are a financial news sentiment analyzer. Analyze the sentiment of news articles and return ONLY valid JSON.'
                   },
                   {
                     role: 'user',
-                    content: `Analyze the sentiment of these news articles about ${name} (${symbol}). Consider source credibility weights and detected events:
-
-Articles:
+                    content: `Analyze the sentiment of these news articles about ${name} (${symbol}) and return JSON:
 ${JSON.stringify(articlesForAnalysis, null, 2)}
-
-${detectedEvents.length > 0 ? `Detected Events: ${JSON.stringify(detectedEvents, null, 2)}` : ''}
-${sectorSentiment ? `Sector Sentiment: ${sectorSentiment}` : ''}
 
 Return this JSON format:
 {
   "overall": "positive" | "negative" | "neutral",
-  "summary": "brief summary considering source credibility and events (1-2 sentences)",
-  "confidence": 0-100,
+  "summary": "brief summary of news sentiment (1-2 sentences)",
   "articles": [{"title": "string", "sentiment": "positive/negative/neutral", "impact": "high/medium/low"}]
 }`
                   }
@@ -794,24 +451,7 @@ Return this JSON format:
                 const jsonMatch = content.match(/\{[\s\S]*\}/);
                 if (jsonMatch) {
                   newsSentiment = JSON.parse(jsonMatch[0]);
-                  
-                  // PRIORITY 6: Adjust confidence based on event detection and sector correlation
-                  let confidenceAdjustment = 0;
-                  if (detectedEvents.length > 0) {
-                    confidenceAdjustment -= 15; // Reduce confidence during major events
-                    console.log(`⚠️ Confidence reduced by 15% due to ${detectedEvents.length} detected event(s)`);
-                  }
-                  if (sectorSentiment && sectorSentiment !== newsSentiment.overall) {
-                    confidenceAdjustment -= 10; // Sector conflict
-                    console.log(`⚠️ Confidence reduced by 10% due to sector sentiment conflict`);
-                  } else if (sectorSentiment && sectorSentiment === newsSentiment.overall) {
-                    confidenceAdjustment += 10; // Sector alignment
-                    console.log(`✓ Confidence increased by 10% due to sector sentiment alignment`);
-                  }
-                  
-                  newsSentiment.confidence = Math.max(0, Math.min(100, (newsSentiment.confidence || 50) + confidenceAdjustment));
-                  
-                  console.log(`✓ News sentiment analyzed: ${newsSentiment.overall} (confidence: ${newsSentiment.confidence}%, ${qualityArticles.length} quality articles, source: ${queryUsed || 'Google News RSS'})`);
+                  console.log(`✓ News sentiment analyzed: ${newsSentiment.overall} (${articles.length} articles, source: ${queryUsed || 'Google News RSS'})`);
                 }
               }
             }
@@ -976,50 +616,25 @@ Return this JSON format:
     console.log(`Fetching real option chain data from NSE for ${nseSymbolToFetch}`);
     const nseResult = await fetchNSEOptionChain(nseSymbolToFetch, type);
     
-    // Initialize IV variables
-    let realCallIV: number | null = null;
-    let realPutIV: number | null = null;
-    let ivRank = 50; // Default
-    let ivPercentile = 50; // Default
-    
     if (nseResult.data) {
-      const callData = extractATMPremiumAndIV(nseResult.data, analysis.current, 'CE');
-      const putData = extractATMPremiumAndIV(nseResult.data, analysis.current, 'PE');
-      
-      realCallPremium = callData.premium;
-      realPutPremium = putData.premium;
-      realCallIV = callData.iv;
-      realPutIV = putData.iv;
+      realCallPremium = extractATMPremium(nseResult.data, analysis.current, 'CE');
+      realPutPremium = extractATMPremium(nseResult.data, analysis.current, 'PE');
       nseMarketLot = nseResult.marketLot;
       
       if (realCallPremium || realPutPremium) {
         dataSource = 'NSE_LIVE';
         console.log(
-          `Successfully fetched NSE data - Call: ₹${realCallPremium ?? 'N/A'} (IV: ${realCallIV ?? 'N/A'}%), ` +
-          `Put: ₹${realPutPremium ?? 'N/A'} (IV: ${realPutIV ?? 'N/A'}%)`
+          `Successfully fetched NSE data - Call: ₹${realCallPremium ?? 'N/A'}, ` +
+          `Put: ₹${realPutPremium ?? 'N/A'}`
         );
       }
       
-      // Calculate IV percentile and rank if we have IV data
-      const supabaseUrl = Deno.env.get('SUPABASE_URL');
-      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-      
-      if (supabaseUrl && supabaseKey && (realCallIV || realPutIV)) {
-        const avgIV = realCallIV && realPutIV ? (realCallIV + realPutIV) / 2 : (realCallIV || realPutIV)!;
-        const ivMetrics = await calculateIVPercentile(symbol, avgIV, supabaseUrl, supabaseKey);
-        ivRank = ivMetrics.ivRank;
-        ivPercentile = ivMetrics.ivPercentile;
-        
-        // Store IV metrics for future comparisons
-        await storeIVMetrics(symbol, avgIV, ivRank, ivPercentile, supabaseUrl, supabaseKey);
+      // PRIORITY 1: Use NSE API marketLot if available (most authoritative)
+      if (nseMarketLot && nseMarketLot > 0 && type === 'share') {
+        lotSize = nseMarketLot;
+        lotSizeSource = 'nse-api';
+        console.log(`✓ Lot size from NSE API (PRIORITY 1): ${lotSize} units`);
       }
-    }
-    
-    // PRIORITY 1: Use NSE API marketLot if available (most authoritative)
-    if (nseMarketLot && nseMarketLot > 0 && type === 'share') {
-      lotSize = nseMarketLot;
-      lotSizeSource = 'nse-api';
-      console.log(`✓ Lot size from NSE API (PRIORITY 1): ${lotSize} units`);
     }
     
     // Step 3: PRIORITY 2: Try NiftyTrader (only if NSE API didn't provide lot size)
@@ -1094,51 +709,27 @@ Return this JSON format:
       console.log(`Applied time value multiplier for ${daysToExpiry} days: ₹${expectedPremiumMin}-${expectedPremiumMax}`);
     }
     
-    // Build IV context for AI
-    let ivContext: string;
-    const ivLevel = ivRank > 70 ? 'HIGH' : ivRank > 40 ? 'MODERATE' : 'LOW';
-    const ivStrategy = ivRank > 70 ? 'Consider buying strategies - premiums are elevated' : 
-                       ivRank > 40 ? 'Balanced approach - moderate premiums' : 
-                       'Premium buying opportunities - IV is low';
-    
-    if (realCallIV || realPutIV) {
-      const avgIV = realCallIV && realPutIV ? (realCallIV + realPutIV) / 2 : (realCallIV || realPutIV)!;
-      ivContext = `IMPLIED VOLATILITY (Real NSE Data):
-- Current IV: ${avgIV.toFixed(2)}% (Call: ${realCallIV?.toFixed(2) ?? 'N/A'}%, Put: ${realPutIV?.toFixed(2) ?? 'N/A'}%)
-- IV Rank: ${ivRank}/100 (${ivLevel})
-- IV Percentile: ${ivPercentile.toFixed(1)}%
-- Strategy Guidance: ${ivStrategy}
-
-IV Rank ${ivRank} means current IV is ${ivRank > 50 ? 'ABOVE' : 'BELOW'} average levels.`;
-    } else {
-      ivContext = `IMPLIED VOLATILITY (Estimated):
-- IV Rank: ${ivRank}/100 (using historical averages)
-- IV Level: MODERATE (default)
-
-Note: Real IV data not available from NSE.`;
-    }
-    
     // Build premium context for AI
     let premiumContext: string;
     
     if (dataSource === 'NSE_LIVE' && realCallPremium && realPutPremium) {
       premiumContext = `REAL OPTION PREMIUMS (from NSE Live Data):
-- ATM Call Premium: ₹${realCallPremium} per lot (IV: ${realCallIV?.toFixed(2) ?? 'N/A'}%)
-- ATM Put Premium: ₹${realPutPremium} per lot (IV: ${realPutIV?.toFixed(2) ?? 'N/A'}%)
+- ATM Call Premium: ₹${realCallPremium} per lot
+- ATM Put Premium: ₹${realPutPremium} per lot
 - Data Source: Live NSE Option Chain
 - Days to Expiry: ${daysToExpiry}
 
 Use these REAL premiums for your recommendation. Suggest strikes near ATM based on market view.`;
     } else if (dataSource === 'NSE_LIVE' && realCallPremium) {
       premiumContext = `REAL OPTION PREMIUM (from NSE Live Data):
-- ATM Call Premium: ₹${realCallPremium} per lot (IV: ${realCallIV?.toFixed(2) ?? 'N/A'}%)
+- ATM Call Premium: ₹${realCallPremium} per lot
 - Data Source: Live NSE Option Chain (Call side)
 - Days to Expiry: ${daysToExpiry}
 
 Use this REAL CALL premium for your recommendation.`;
     } else if (dataSource === 'NSE_LIVE' && realPutPremium) {
       premiumContext = `REAL OPTION PREMIUM (from NSE Live Data):
-- ATM Put Premium: ₹${realPutPremium} per lot (IV: ${realPutIV?.toFixed(2) ?? 'N/A'}%)
+- ATM Put Premium: ₹${realPutPremium} per lot
 - Data Source: Live NSE Option Chain (Put side)
 - Days to Expiry: ${daysToExpiry}
 
@@ -1160,8 +751,6 @@ MARKET DATA:
 - Expiry: ${expiryDate}
 - Lot Size: ${lotSize}
 ${isExpiryToday ? '- ⚠️ TODAY IS EXPIRY DAY - Intraday only, exit before 3:15 PM IST' : `- Days to Expiry: ${daysToExpiry}`}
-
-${ivContext}
 
 ${premiumContext}
 
@@ -1238,7 +827,7 @@ Provide realistic options strategy:
   "maxLoss": <totalInvestment>,
   "maxGain": <realistic gain in rupees>,
   "breakeven": <strike ± premium>,
-  "ivRank": ${ivRank},
+  "ivRank": <0-100>,
   "greeks": {"delta": <0.4-0.6>, "gamma": <0.01-0.05>, "theta": <-10 to -50>, "vega": <50-150>},
   "reasoning": "Brief analysis (2-3 lines) including news sentiment impact and technical factors",
   "riskLevel": "Low|Medium|High",
@@ -1312,65 +901,27 @@ Provide realistic options strategy:
       throw new Error('Invalid JSON in AI response');
     }
     
-    // PRIORITY 3: Weighted Confidence Scoring (40% sentiment, 40% technical, 20% volume)
-    const sentimentWeight = 0.4;
-    const technicalWeight = 0.4;
-    const volumeWeight = 0.2;
-    
-    // Calculate sentiment score (-100 to +100)
-    let sentimentScore = 0;
-    let sentimentConfidence = 'low';
-    
-    if (newsSentiment.overall === 'positive') {
-      sentimentScore = 70;
-      sentimentConfidence = newsSentiment.articles?.some((a: any) => a.impact === 'high') ? 'high' : 'medium';
-    } else if (newsSentiment.overall === 'negative') {
-      sentimentScore = -70;
-      sentimentConfidence = newsSentiment.articles?.some((a: any) => a.impact === 'high') ? 'high' : 'medium';
-    }
-    
-    // Calculate technical score (-100 to +100) based on trend score
-    const technicalScore = (analysis.trendScore / 10) * 100; // Normalize -10 to +10 range to -100 to +100
-    
-    // Calculate volume score (-100 to +100)
-    const volumeScore = analysis.volumeRatio > 1.5 ? 50 : 
-                        analysis.volumeRatio > 1.2 ? 30 :
-                        analysis.volumeRatio < 0.8 ? -30 : 0;
-    
-    // Weighted confidence score
-    const confidenceScore = (sentimentScore * sentimentWeight) + 
-                           (technicalScore * technicalWeight) + 
-                           (volumeScore * volumeWeight);
-    
-    // Strategy override logic (only when high confidence and conflicting signals)
+    // CRITICAL: Validate sentiment-strategy alignment
     let strategyAutoCorrect = false;
-    const shouldOverride = sentimentConfidence === 'high' && Math.abs(sentimentScore) > 60;
-    
-    if (shouldOverride && newsSentiment.overall === 'negative' && prediction.optionType === 'CALL') {
-      console.error(`❌ STRATEGY CONFLICT: Strong negative sentiment (${sentimentScore}) but AI recommended CALL!`);
-      console.log(`🔄 Auto-correcting strategy to PUT (confidence: ${confidenceScore.toFixed(1)})...`);
+    if (newsSentiment.overall === 'negative' && prediction.optionType === 'CALL') {
+      console.error(`❌ STRATEGY CONFLICT: Negative sentiment but AI recommended CALL!`);
+      console.log('🔄 Auto-correcting strategy to PUT...');
       
       prediction.strategy = 'Long Put';
       prediction.optionType = 'PUT';
-      prediction.reasoning = `${prediction.reasoning} [AUTO-CORRECTED: High-confidence negative sentiment (${sentimentScore}) overrides technical signals]`;
+      prediction.reasoning = `${prediction.reasoning} [AUTO-CORRECTED: Negative news sentiment requires bearish PUT strategy]`;
       strategyAutoCorrect = true;
     }
     
-    if (shouldOverride && newsSentiment.overall === 'positive' && prediction.optionType === 'PUT') {
-      console.error(`❌ STRATEGY CONFLICT: Strong positive sentiment (${sentimentScore}) but AI recommended PUT!`);
-      console.log(`🔄 Auto-correcting strategy to CALL (confidence: ${confidenceScore.toFixed(1)})...`);
+    if (newsSentiment.overall === 'positive' && prediction.optionType === 'PUT') {
+      console.error(`❌ STRATEGY CONFLICT: Positive sentiment but AI recommended PUT!`);
+      console.log('🔄 Auto-correcting strategy to CALL...');
       
       prediction.strategy = 'Long Call';
       prediction.optionType = 'CALL';
-      prediction.reasoning = `${prediction.reasoning} [AUTO-CORRECTED: High-confidence positive sentiment (${sentimentScore}) overrides technical signals]`;
+      prediction.reasoning = `${prediction.reasoning} [AUTO-CORRECTED: Positive news sentiment requires bullish CALL strategy]`;
       strategyAutoCorrect = true;
     }
-    
-    // Add confidence score to prediction
-    prediction.confidenceScore = Math.round(confidenceScore);
-    prediction.sentimentWeight = Math.round(sentimentScore * sentimentWeight);
-    prediction.technicalWeight = Math.round(technicalScore * technicalWeight);
-    prediction.volumeWeight = Math.round(volumeScore * volumeWeight);
     
     // Override with real NSE premium if available
     if (dataSource === 'NSE_LIVE' && realCallPremium && prediction.optionType === 'CALL') {
@@ -1440,76 +991,6 @@ Provide realistic options strategy:
     // Ensure totalInvestment is recalculated with corrected premium
     prediction.totalInvestment = prediction.premium.buyLeg * prediction.lotSize;
     
-    // PRIORITY 7: Calculate real Black-Scholes Greeks
-    const CURRENT_REPO_RATE = 0.065; // RBI repo rate 6.5%
-    const avgIV = realCallIV && realPutIV ? (realCallIV + realPutIV) / 2 : (realCallIV || realPutIV || 25);
-    
-    const realGreeks = calculateBlackScholesGreeks(
-      analysis.current,
-      prediction.strikePrice,
-      daysToExpiry / 365,
-      avgIV / 100,
-      CURRENT_REPO_RATE,
-      prediction.optionType === 'CALL' ? 'CE' : 'PE'
-    );
-    
-    // Validate prediction with Greeks
-    const greeksValidation = validatePredictionWithGreeks(realGreeks, daysToExpiry, ivRank);
-    
-    // Get position sizing recommendation
-    const positionSizing = getPositionSizeRecommendation(realGreeks, ivRank, daysToExpiry);
-    
-    // Apply Greeks risk adjustment to confidence
-    const greeksAdjustedConfidence = Math.max(0, Math.min(100, 
-      prediction.confidenceScore + greeksValidation.riskAdjustment
-    ));
-    
-    // Override AI-estimated Greeks with calculated Black-Scholes Greeks
-    prediction.greeks = {
-      delta: realGreeks.delta,
-      gamma: realGreeks.gamma,
-      theta: realGreeks.theta,
-      vega: realGreeks.vega,
-      rho: realGreeks.rho,
-      interpretation: {
-        delta: `${Math.abs(realGreeks.delta * 100).toFixed(1)}% price sensitivity - option will move ₹${Math.abs(realGreeks.delta).toFixed(2)} for every ₹1 move in underlying`,
-        theta: `Premium decays by ₹${Math.abs(realGreeks.theta).toFixed(2)} per day`,
-        vega: `₹${realGreeks.vega.toFixed(2)} gain/loss per 1% IV change`,
-        gamma: realGreeks.gamma > 0.03 ? 'High delta sensitivity - rapid changes' : 'Moderate delta sensitivity'
-      }
-    };
-    
-    // Add Greeks validation and position sizing to prediction
-    prediction.greeksValidation = {
-      warnings: greeksValidation.warnings,
-      riskAdjustment: greeksValidation.riskAdjustment,
-      adjustedConfidence: greeksAdjustedConfidence
-    };
-    
-    prediction.positionSizing = {
-      recommendedMultiplier: positionSizing.sizeMultiplier,
-      recommendedLots: Math.max(1, Math.round(positionSizing.sizeMultiplier)),
-      reasoning: positionSizing.reasoning,
-      adjustedInvestment: Math.round(prediction.totalInvestment * positionSizing.sizeMultiplier)
-    };
-    
-    console.log(`
-📊 BLACK-SCHOLES GREEKS:
-  Delta: ${realGreeks.delta.toFixed(3)} (${(realGreeks.delta * 100).toFixed(1)}% sensitivity)
-  Gamma: ${realGreeks.gamma.toFixed(4)}
-  Theta: ${realGreeks.theta.toFixed(2)} (₹${Math.abs(realGreeks.theta).toFixed(2)}/day decay)
-  Vega: ${realGreeks.vega.toFixed(2)} (per 1% IV)
-  
-Greeks Validation:
-  Warnings: ${greeksValidation.warnings.length > 0 ? greeksValidation.warnings.join('; ') : 'None'}
-  Risk Adjustment: ${greeksValidation.riskAdjustment > 0 ? '+' : ''}${greeksValidation.riskAdjustment}
-  Adjusted Confidence: ${greeksAdjustedConfidence}%
-  
-Position Sizing:
-  Recommended Multiplier: ${positionSizing.sizeMultiplier}x
-  ${positionSizing.reasoning}
-`);
-    
     // Store premium snapshot for historical tracking (if NSE live data available)
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -1537,21 +1018,12 @@ Position Sizing:
         }
       }
       
-      // Track prediction for backtesting with market context
+      // Track prediction for backtesting
       try {
         await supabase.from('prediction_tracking').insert({
           symbol,
           option_type: type,
-          prediction_json: {
-            ...prediction,
-            marketContext,
-            confidenceBreakdown: {
-              total: confidenceScore,
-              sentiment: sentimentScore * sentimentWeight,
-              technical: technicalScore * technicalWeight,
-              volume: volumeScore * volumeWeight
-            }
-          },
+          prediction_json: prediction,
           predicted_strategy: prediction.strategy,
           predicted_direction: prediction.optionType,
           predicted_strike: prediction.strikePrice,
@@ -1562,10 +1034,9 @@ Position Sizing:
           technical_score: analysis.trendScore,
           trend_at_prediction: analysis.trend,
           rsi_at_prediction: analysis.rsi,
-          iv_rank_at_prediction: ivRank,
           tracked_until: new Date(new Date().getTime() + Math.min(daysToExpiry, 7) * 24 * 60 * 60 * 1000).toISOString()
         });
-        console.log('✓ Prediction tracked for backtesting with market context');
+        console.log('✓ Prediction tracked for backtesting');
       } catch (error) {
         console.error('Failed to track prediction:', error);
       }
@@ -1588,35 +1059,10 @@ Position Sizing:
         prediction, 
         historicalData,
         dataSource,
-        marketContext,
-        confidenceBreakdown: {
-          total: confidenceScore,
-          sentiment: sentimentScore * sentimentWeight,
-          technical: technicalScore * technicalWeight,
-          volume: volumeScore * volumeWeight
-        },
-        // PRIORITY 6: Enhanced news analysis data
-        newsAnalysis: {
-          sentiment: newsSentiment.overall,
-          summary: newsSentiment.summary,
-          confidence: newsSentiment.confidence || 50,
-          articles: newsSentiment.articles,
-          detectedEvents: detectedEvents.length > 0 ? detectedEvents : null,
-          sectorSentiment: sectorSentiment || null,
-          sourceCredibility: 'weighted'
-        },
-        realPremiums: {
+        realPremiums: dataSource === 'NSE_LIVE' && realCallPremium && realPutPremium ? {
           callPremium: realCallPremium,
           putPremium: realPutPremium,
-          callIV: realCallIV,
-          putIV: realPutIV
-        },
-        ivAnalysis: {
-          ivRank,
-          ivPercentile,
-          level: ivLevel,
-          strategy: ivStrategy
-        },
+        } : null,
         expiryInfo: {
           date: expiryDateISO,
           formatted: expiryDate,
@@ -1661,93 +1107,6 @@ Position Sizing:
     );
   }
 });
-
-// Fetch market context: Nifty correlation, VIX, time-of-day analysis
-async function fetchMarketContext(symbol: string, type: 'index' | 'share') {
-  const istTime = getCurrentISTTime();
-  const hour = istTime.getUTCHours();
-  const minute = istTime.getUTCMinutes();
-  
-  // Time-of-day analysis
-  const timeInMinutes = hour * 60 + minute;
-  const marketOpen = 9 * 60 + 15; // 9:15 AM
-  const firstHourEnd = 10 * 60 + 15; // 10:15 AM
-  const lastHourStart = 14 * 60 + 30; // 2:30 PM
-  const marketClose = 15 * 60 + 30; // 3:30 PM
-  
-  let timeOfDay: string;
-  let timeContext: string;
-  
-  if (timeInMinutes < marketOpen || timeInMinutes > marketClose) {
-    timeOfDay = 'Closed';
-    timeContext = 'Market is closed';
-  } else if (timeInMinutes <= firstHourEnd) {
-    timeOfDay = 'Opening Hour';
-    timeContext = 'High volatility expected, use wider stops';
-  } else if (timeInMinutes >= lastHourStart) {
-    timeOfDay = 'Closing Hour';
-    timeContext = 'Increased volatility, consider intraday exits';
-  } else {
-    timeOfDay = 'Mid-Session';
-    timeContext = 'Normal trading conditions';
-  }
-  
-  // Fetch Nifty 50 data for correlation (if analyzing a stock)
-  let niftyCorrelation = 'N/A';
-  let niftyTrend = 'Unknown';
-  
-  if (type === 'share') {
-    try {
-      const niftyData = await fetchStockData('^NSEI');
-      if (niftyData && niftyData.length > 0) {
-        const niftyAnalysis = analyzeData(niftyData);
-        niftyTrend = niftyAnalysis.trend;
-        niftyCorrelation = niftyTrend.includes('Bullish') ? 'Bullish Market' : 
-                          niftyTrend.includes('Bearish') ? 'Bearish Market' : 'Neutral Market';
-      }
-    } catch (error) {
-      console.error('Failed to fetch Nifty data for correlation:', error);
-    }
-  }
-  
-  // Fetch VIX (India VIX) from NSE
-  let vixLevel = 'Unknown';
-  let vixValue: number | null = null;
-  
-  try {
-    const cookies = await getNSECookies();
-    const vixResponse = await fetch('https://www.nseindia.com/api/allIndices', {
-      headers: {
-        ...NSE_HEADERS,
-        'Cookie': cookies,
-      },
-    });
-    
-    if (vixResponse.ok) {
-      const vixData = await vixResponse.json();
-      const vix = vixData.data?.find((idx: any) => idx.index === 'INDIA VIX');
-      if (vix && vix.last) {
-        vixValue = vix.last;
-        if (vixValue !== null) {
-          vixLevel = vixValue > 20 ? 'High (>20)' : vixValue > 15 ? 'Moderate (15-20)' : 'Low (<15)';
-          console.log(`India VIX: ${vixValue} (${vixLevel})`);
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Failed to fetch VIX:', error);
-  }
-  
-  return {
-    timeOfDay,
-    timeContext,
-    niftyCorrelation,
-    niftyTrend,
-    vixLevel,
-    vixValue,
-    timestamp: istTime.toISOString()
-  };
-}
 
 async function fetchStockData(symbol: string) {
   try {

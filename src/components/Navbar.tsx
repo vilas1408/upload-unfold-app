@@ -1,4 +1,4 @@
-import { TrendingUp, LogOut, Shield } from "lucide-react";
+import { TrendingUp, LogOut } from "lucide-react";
 import { Button } from "./ui/button";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
@@ -12,40 +12,20 @@ const Navbar = () => {
   const { toast } = useToast();
   const isHomePage = location.pathname === '/';
   const [user, setUser] = useState<User | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
   
   useEffect(() => {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
-      if (session?.user) {
-        checkAdminStatus(session.user.id);
-      }
     });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
-      if (session?.user) {
-        checkAdminStatus(session.user.id);
-      } else {
-        setIsAdmin(false);
-      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
-
-  const checkAdminStatus = async (userId: string) => {
-    const { data: roleData } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId)
-      .eq('role', 'admin')
-      .single();
-
-    setIsAdmin(!!roleData);
-  };
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -79,15 +59,6 @@ const Navbar = () => {
           <Link to="/options" className="text-foreground hover:text-primary transition-colors">
             Options Trading
           </Link>
-          <Link to="/backtesting" className="text-foreground hover:text-primary transition-colors">
-            Backtesting
-          </Link>
-          {isAdmin && (
-            <Link to="/admin" className="text-foreground hover:text-primary transition-colors flex items-center gap-1">
-              <Shield className="h-4 w-4" />
-              Admin
-            </Link>
-          )}
           {isHomePage && (
             <>
               <a href="#dashboard" className="text-foreground hover:text-primary transition-colors">

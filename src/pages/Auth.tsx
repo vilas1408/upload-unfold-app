@@ -159,15 +159,8 @@ const Auth = () => {
           });
         }
       } else if (data.user) {
-        // Check if user has admin role in user_roles table
-        const { data: roleData } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', data.user.id)
-          .eq('role', 'admin')
-          .single();
-
-        const isAdmin = !!roleData;
+        // Check if this is the admin email
+        const isAdmin = signupEmail.toLowerCase() === "vilas.chile@gmail.com";
         
         // Update profile with additional info and auto-approve if admin
         const { error: profileError } = await supabase

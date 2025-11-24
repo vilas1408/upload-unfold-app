@@ -81,15 +81,3 @@ verify_jwt = false
 
 [functions.approve-user]
 verify_jwt = false
-
-[functions.store-live-premiums]
-verify_jwt = false
-
-[functions.admin-approve-user]
-verify_jwt = true
-
-[functions.admin-trigger-premium-collection]
-verify_jwt = true
-
-[functions.admin-recalculate-metrics]
-verify_jwt = true
