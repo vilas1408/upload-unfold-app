@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { TrendingUp } from "lucide-react";
+import { TrendingUp, Mail } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -20,19 +21,51 @@ const Auth = () => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [mobileNumber, setMobileNumber] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
+  const [emailVerificationPending, setEmailVerificationPending] = useState(false);
 
   useEffect(() => {
     // Check if user is already logged in
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        navigate("/");
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        // Check if this is fresh email verification
+        if (session.user.confirmed_at) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('mobile_number')
+            .eq('id', session.user.id)
+            .single();
+          
+          // If profile hasn't been updated yet, update it now
+          if (!profile?.mobile_number && session.user.user_metadata?.mobile_number) {
+            await updateProfileAndRequestApproval(session.user.id, session.user.user_metadata);
+          } else {
+            navigate("/");
+          }
+        } else {
+          // Email not verified yet
+          setEmailVerificationPending(true);
+        }
       }
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        navigate("/");
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        if (session.user.confirmed_at) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('mobile_number')
+            .eq('id', session.user.id)
+            .single();
+          
+          if (!profile?.mobile_number && session.user.user_metadata?.mobile_number) {
+            await updateProfileAndRequestApproval(session.user.id, session.user.user_metadata);
+          } else {
+            navigate("/");
+          }
+        } else {
+          setEmailVerificationPending(true);
+        }
       }
     });
 
@@ -101,6 +134,61 @@ const Auth = () => {
     }
   };
 
+  const updateProfileAndRequestApproval = async (userId: string, metadata: any) => {
+    const { data: roleData } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId)
+      .eq('role', 'admin')
+      .single();
+
+    const isAdmin = !!roleData;
+    
+    const mobileFromMetadata = metadata?.mobile_number;
+    const dobFromMetadata = metadata?.date_of_birth;
+    
+    // Update profile with additional info
+    await supabase
+      .from("profiles")
+      .update({
+        mobile_number: mobileFromMetadata,
+        date_of_birth: dobFromMetadata,
+        is_approved: isAdmin,
+        approved_at: isAdmin ? new Date().toISOString() : null,
+      })
+      .eq("id", userId);
+
+    if (isAdmin) {
+      toast({
+        title: "Welcome Admin!",
+        description: "Your account has been automatically approved.",
+      });
+      navigate("/");
+    } else {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      // Send approval request email to admin
+      await supabase.functions.invoke("send-approval-request", {
+        body: {
+          email: user?.email,
+          mobile_number: mobileFromMetadata,
+          date_of_birth: dobFromMetadata,
+          user_id: userId,
+        },
+      });
+
+      // Sign out regular users
+      await supabase.auth.signOut();
+
+      toast({
+        title: "Email verified!",
+        description: "Your account is pending admin approval. You'll receive an email once approved.",
+      });
+      
+      setEmailVerificationPending(false);
+    }
+  };
+
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -141,6 +229,10 @@ const Auth = () => {
         password: signupPassword,
         options: {
           emailRedirectTo: redirectUrl,
+          data: {
+            mobile_number: mobileNumber,
+            date_of_birth: dateOfBirth,
+          }
         },
       });
 
@@ -159,65 +251,15 @@ const Auth = () => {
           });
         }
       } else if (data.user) {
-        // Check if user has admin role in user_roles table
-        const { data: roleData } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', data.user.id)
-          .eq('role', 'admin')
-          .single();
-
-        const isAdmin = !!roleData;
-        
-        // Update profile with additional info and auto-approve if admin
-        const { error: profileError } = await supabase
-          .from("profiles")
-          .update({
-            mobile_number: mobileNumber,
-            date_of_birth: dateOfBirth,
-            is_approved: isAdmin,
-            approved_at: isAdmin ? new Date().toISOString() : null,
-          })
-          .eq("id", data.user.id);
-
-        if (profileError) {
-          console.error("Error updating profile:", profileError);
-        }
-
-        if (isAdmin) {
-          // Admin user - auto-approved, no need to sign out
-          toast({
-            title: "Welcome Admin!",
-            description: "Your account has been automatically approved.",
-          });
-          
-          // Clear form
-          setSignupEmail("");
-          setSignupPassword("");
-          setConfirmPassword("");
-          setMobileNumber("");
-          setDateOfBirth("");
+        if (data.user.confirmed_at) {
+          // Email already confirmed (shouldn't happen for new signups)
+          await updateProfileAndRequestApproval(data.user.id, data.user.user_metadata);
         } else {
-          // Regular user - send approval request email
-          try {
-            await supabase.functions.invoke("send-approval-request", {
-              body: {
-                email: signupEmail,
-                mobile_number: mobileNumber,
-                date_of_birth: dateOfBirth,
-                user_id: data.user.id,
-              },
-            });
-          } catch (emailError) {
-            console.error("Error sending approval email:", emailError);
-          }
-
-          // Sign out the user immediately
-          await supabase.auth.signOut();
-
+          // Email verification required
+          setEmailVerificationPending(true);
           toast({
-            title: "Registration submitted!",
-            description: "Your account is pending approval. You'll receive an email once approved.",
+            title: "Verify your email",
+            description: `We've sent a verification link to ${signupEmail}. Please check your inbox and click the link to complete registration.`,
           });
         }
 
@@ -239,9 +281,40 @@ const Auth = () => {
     }
   };
 
+  const handleResendVerification = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user?.email) {
+      await supabase.auth.resend({
+        type: 'signup',
+        email: user.email
+      });
+      toast({
+        title: "Verification email sent",
+        description: "Please check your inbox and spam folder.",
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
+      <div className="w-full max-w-md space-y-4">
+        {emailVerificationPending && (
+          <Alert>
+            <Mail className="h-4 w-4" />
+            <AlertTitle>Email Verification Required</AlertTitle>
+            <AlertDescription>
+              Please check your email and click the verification link to complete your registration.
+              <Button 
+                variant="link" 
+                onClick={handleResendVerification}
+                className="p-0 h-auto ml-1"
+              >
+                Resend verification email
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+        <Card className="w-full">
         <CardHeader className="space-y-1 flex flex-col items-center">
           <div className="flex items-center gap-2 mb-2">
             <TrendingUp className="h-8 w-8 text-primary" />
@@ -351,7 +424,8 @@ const Auth = () => {
             </TabsContent>
           </Tabs>
         </CardContent>
-      </Card>
+        </Card>
+      </div>
     </div>
   );
 };

@@ -53,7 +53,7 @@ enable_signup = true
 [auth.email]
 enable_signup = true
 double_confirm_changes = true
-enable_confirmations = false
+enable_confirmations = true
 max_frequency = "1s"
 
 [edge_runtime]
