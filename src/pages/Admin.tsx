@@ -11,16 +11,34 @@ import { PremiumTrackingTab } from '@/components/admin/PremiumTrackingTab';
 import { AccuracyMetricsTab } from '@/components/admin/AccuracyMetricsTab';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import Navbar from '@/components/Navbar';
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb';
 
 const Admin = () => {
   const { isAdmin, loading } = useAdminCheck();
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState('users');
   const [stats, setStats] = useState({
     totalUsers: 0,
     pendingUsers: 0,
     totalPredictions: 0,
     activePremiums: 0
   });
+
+  const tabLabels: Record<string, string> = {
+    users: 'User Management',
+    system: 'System Health',
+    predictions: 'Predictions Monitor',
+    premium: 'Premium Tracking',
+    metrics: 'Accuracy Metrics',
+  };
 
   useEffect(() => {
     if (!loading && !isAdmin) {
@@ -86,7 +104,25 @@ const Admin = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto p-6 space-y-6">
+      <Navbar />
+      <div className="container mx-auto p-6 pt-24 space-y-6">
+        {/* Breadcrumb */}
+        <Breadcrumb className="mb-6">
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/">Home</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/admin">Admin</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>{tabLabels[activeTab]}</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+
         {/* Header */}
         <div className="flex items-center gap-3">
           <Shield className="h-8 w-8 text-primary" />
@@ -146,7 +182,7 @@ const Admin = () => {
         </div>
 
         {/* Main Tabs */}
-        <Tabs defaultValue="users" className="space-y-4">
+        <Tabs defaultValue="users" className="space-y-4" onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="users">
               <Users className="h-4 w-4 mr-2" />
