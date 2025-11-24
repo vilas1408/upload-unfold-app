@@ -293,7 +293,49 @@ serve(async (req) => {
     
     // Fetch news with multiple sources and fallbacks
     const NEWS_API_KEY = Deno.env.get('NEWS_API_KEY');
-    let newsSentiment = { overall: 'neutral', summary: 'No recent news available', articles: [] };
+    let newsSentiment = { 
+      overall: 'neutral', 
+      strength: 'neutral' as 'strong_positive' | 'positive' | 'neutral' | 'negative' | 'strong_negative',
+      confidence: 0,
+      summary: 'No recent news available', 
+      articles: [] as any[],
+      weightedScore: 0
+    };
+    
+    // Source Credibility Tiers
+    const SOURCE_CREDIBILITY = {
+      'economictimes.com': { tier: 1, weight: 1.0, name: 'Economic Times' },
+      'moneycontrol.com': { tier: 1, weight: 1.0, name: 'Moneycontrol' },
+      'livemint.com': { tier: 1, weight: 1.0, name: 'LiveMint' },
+      'business-standard.com': { tier: 1, weight: 1.0, name: 'Business Standard' },
+      'financialexpress.com': { tier: 2, weight: 0.8, name: 'Financial Express' },
+      'ndtv.com': { tier: 2, weight: 0.8, name: 'NDTV' },
+      'thehindubusinessline.com': { tier: 2, weight: 0.8, name: 'Hindu BusinessLine' },
+      'google': { tier: 3, weight: 0.5, name: 'Google News' }
+    };
+    
+    // Calculate article recency multiplier
+    const getRecencyMultiplier = (publishedAt: string): number => {
+      const articleDate = new Date(publishedAt);
+      const now = new Date();
+      const hoursDiff = (now.getTime() - articleDate.getTime()) / (1000 * 60 * 60);
+      
+      if (hoursDiff < 6) return 1.5;      // < 6 hours
+      if (hoursDiff < 24) return 1.2;     // 6-24 hours
+      if (hoursDiff < 72) return 1.0;     // 1-3 days
+      if (hoursDiff < 168) return 0.7;    // 3-7 days
+      return 0.3;                          // > 7 days (very stale)
+    };
+    
+    // Get source credibility
+    const getSourceCredibility = (url: string, sourceName: string) => {
+      for (const [domain, cred] of Object.entries(SOURCE_CREDIBILITY)) {
+        if (url?.includes(domain) || sourceName?.toLowerCase().includes(cred.name.toLowerCase())) {
+          return cred;
+        }
+      }
+      return { tier: 3, weight: 0.5, name: sourceName || 'Unknown' };
+    };
     
     // Helper function to fetch and parse Google News RSS
     const fetchGoogleNewsRSS = async (query: string): Promise<any[]> => {
@@ -405,14 +447,39 @@ serve(async (req) => {
         
         // Analyze sentiment if we have articles
         if (articles.length > 0) {
-          // Use Lovable AI to analyze sentiment of real news articles
+          // Use Lovable AI to analyze sentiment with enhanced weighted scoring
           const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
           if (LOVABLE_API_KEY) {
-            const articlesForAnalysis = articles.slice(0, 10).map((a: any) => ({
-              title: a.title,
-              description: a.description || a.title,
-              source: a.source?.name
-            }));
+            // Enrich articles with credibility and recency data
+            const enrichedArticles = articles.slice(0, 10).map((a: any) => {
+              const cred = getSourceCredibility(a.url, a.source?.name);
+              const recency = getRecencyMultiplier(a.publishedAt);
+              return {
+                title: a.title,
+                description: a.description || a.title,
+                source: cred.name,
+                credibilityTier: cred.tier,
+                credibilityWeight: cred.weight,
+                recencyMultiplier: recency,
+                publishedAt: a.publishedAt,
+                url: a.url
+              };
+            });
+            
+            // Calculate age descriptions for AI context
+            const articleAges = enrichedArticles.map(a => {
+              const hours = (new Date().getTime() - new Date(a.publishedAt).getTime()) / (1000 * 60 * 60);
+              if (hours < 1) return 'just now';
+              if (hours < 6) return `${Math.floor(hours)}h ago`;
+              if (hours < 24) return 'today';
+              if (hours < 48) return 'yesterday';
+              return `${Math.floor(hours / 24)}d ago`;
+            });
+            
+            console.log('\n📰 NEWS ANALYSIS INPUT:');
+            enrichedArticles.forEach((a, i) => {
+              console.log(`  ${i + 1}. [Tier ${a.credibilityTier}, ${articleAges[i]}] ${a.source}: "${a.title.substring(0, 60)}..."`);
+            });
             
             const sentimentResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
               method: 'POST',
@@ -425,22 +492,46 @@ serve(async (req) => {
                 messages: [
                   {
                     role: 'system',
-                    content: 'You are a financial news sentiment analyzer. Analyze the sentiment of news articles and return ONLY valid JSON.'
+                    content: `You are a financial news sentiment analyzer for Indian stock markets. 
+                    
+CRITICAL INSTRUCTIONS:
+1. Be DECISIVE - avoid "neutral" unless sentiment is genuinely mixed
+2. Consider article credibility (Tier 1 = most reliable, Tier 3 = least)
+3. Weight recent articles (< 24 hours) higher than old ones
+4. Detect major events: earnings, RBI policy, regulatory changes, management shifts
+5. Look for sector-wide trends vs individual stock news
+6. Return sentiment STRENGTH (strong_positive, positive, neutral, negative, strong_negative)
+7. Provide confidence score 0-100 based on article quality, consistency, and credibility
+
+Return ONLY valid JSON with no markdown.`
                   },
                   {
                     role: 'user',
-                    content: `Analyze the sentiment of these news articles about ${name} (${symbol}) and return JSON:
-${JSON.stringify(articlesForAnalysis, null, 2)}
+                    content: `Analyze sentiment for ${name} (${symbol}):
 
-Return this JSON format:
+ARTICLES (with credibility & recency weights):
+${JSON.stringify(enrichedArticles, null, 2)}
+
+Return JSON format:
 {
-  "overall": "positive" | "negative" | "neutral",
-  "summary": "brief summary of news sentiment (1-2 sentences)",
-  "articles": [{"title": "string", "sentiment": "positive/negative/neutral", "impact": "high/medium/low"}]
-}`
+  "strength": "strong_positive" | "positive" | "neutral" | "negative" | "strong_negative",
+  "confidence": <0-100 number>,
+  "summary": "<1-2 sentence summary explaining WHY this sentiment>",
+  "articles": [
+    {
+      "title": "string",
+      "sentiment": "positive" | "negative" | "neutral",
+      "impact": "high" | "medium" | "low",
+      "majorEvent": false | "earnings" | "rbi_policy" | "regulatory" | "management" | "sector_news"
+    }
+  ],
+  "reasoning": "<Why this strength level? What influenced confidence?>"
+}
+
+BE DECISIVE: Only use "neutral" if articles genuinely conflict or lack substance.`
                   }
                 ],
-                temperature: 0.3,
+                temperature: 0.2,
               }),
             });
             
@@ -450,8 +541,50 @@ Return this JSON format:
               if (content) {
                 const jsonMatch = content.match(/\{[\s\S]*\}/);
                 if (jsonMatch) {
-                  newsSentiment = JSON.parse(jsonMatch[0]);
-                  console.log(`✓ News sentiment analyzed: ${newsSentiment.overall} (${articles.length} articles, source: ${queryUsed || 'Google News RSS'})`);
+                  const aiSentiment = JSON.parse(jsonMatch[0]);
+                  
+                  // Calculate weighted sentiment score
+                  let weightedScore = 0;
+                  const sentimentToScore: Record<string, number> = {
+                    'strong_positive': 5,
+                    'positive': 2,
+                    'neutral': 0,
+                    'negative': -2,
+                    'strong_negative': -5
+                  };
+                  
+                  // Apply article-level weights
+                  enrichedArticles.forEach((article, i) => {
+                    const articleSentiment = aiSentiment.articles?.[i]?.sentiment || 'neutral';
+                    const baseScore = articleSentiment === 'positive' ? 1 : articleSentiment === 'negative' ? -1 : 0;
+                    const weight = article.credibilityWeight * article.recencyMultiplier;
+                    weightedScore += baseScore * weight;
+                  });
+                  
+                  // Normalize weighted score
+                  const maxPossibleScore = enrichedArticles.length * 1.5; // max credibility * max recency
+                  const normalizedScore = weightedScore / maxPossibleScore;
+                  
+                  newsSentiment = {
+                    overall: aiSentiment.strength === 'strong_positive' || aiSentiment.strength === 'positive' ? 'positive' :
+                             aiSentiment.strength === 'strong_negative' || aiSentiment.strength === 'negative' ? 'negative' : 'neutral',
+                    strength: aiSentiment.strength,
+                    confidence: aiSentiment.confidence || 50,
+                    summary: aiSentiment.summary,
+                    articles: aiSentiment.articles || [],
+                    weightedScore: Math.round(normalizedScore * 100) / 100
+                  };
+                  
+                  console.log(`
+📊 SENTIMENT ANALYSIS RESULT:
+  Strength: ${newsSentiment.strength}
+  Confidence: ${newsSentiment.confidence}%
+  Weighted Score: ${newsSentiment.weightedScore}
+  Articles Analyzed: ${articles.length}
+  Source: ${queryUsed || 'Google News RSS'}
+  Summary: ${newsSentiment.summary}
+  Reasoning: ${aiSentiment.reasoning || 'N/A'}
+`);
                 }
               }
             }
@@ -754,10 +887,15 @@ ${isExpiryToday ? '- ⚠️ TODAY IS EXPIRY DAY - Intraday only, exit before 3:1
 
 ${premiumContext}
 
-⚠️ CRITICAL RULE: NEWS SENTIMENT OVERRIDES TECHNICAL ANALYSIS
-- If NEWS SENTIMENT is "negative" → YOU MUST RECOMMEND "Long Put" (BEARISH) with PUT option
-- If NEWS SENTIMENT is "positive" → YOU MUST RECOMMEND "Long Call" (BULLISH) with CALL option
-- If NEWS SENTIMENT is "neutral" → Use technical analysis to decide
+⚠️ CRITICAL RULE: NEWS SENTIMENT STRENGTH OVERRIDES TECHNICAL ANALYSIS
+- If NEWS SENTIMENT is "strong_negative" or "negative" with high confidence → RECOMMEND "Long Put" (BEARISH)
+- If NEWS SENTIMENT is "strong_positive" or "positive" with high confidence → RECOMMEND "Long Call" (BULLISH)
+- If NEWS SENTIMENT is "neutral" or low confidence → Use technical analysis to decide
+
+SENTIMENT WEIGHTING:
+- Strong sentiment + high confidence (>70%) = ALWAYS override technicals
+- Moderate sentiment + medium confidence (50-70%) = Consider but don't force override
+- Weak sentiment or low confidence (<50%) = Rely on technical analysis
 
 SECONDARY RULES (only if sentiment is neutral):
 - BULLISH technical signals: Recommend BUY CALL
@@ -794,7 +932,7 @@ SUPPORT & RESISTANCE:
 
 OVERALL TREND: ${analysis.trend} (Score: ${analysis.trendScore}/10)
 
-NEWS SENTIMENT: ${newsSentiment.overall} - ${newsSentiment.summary}
+NEWS SENTIMENT: ${newsSentiment.strength} (${newsSentiment.confidence}% confidence) - ${newsSentiment.summary}
 
 ${isExpiryToday ? '⚠️ ALERT: TODAY IS EXPIRY DAY - Exit all positions before 3:15 PM IST' : ''}
 
@@ -835,7 +973,10 @@ Provide realistic options strategy:
   "technicalScore": <0-100>,
   "newsSentiment": {
     "overall": "${newsSentiment.overall}",
+    "strength": "${newsSentiment.strength}",
+    "confidence": ${newsSentiment.confidence},
     "summary": "${newsSentiment.summary}",
+    "weightedScore": ${newsSentiment.weightedScore},
     "articles": ${JSON.stringify(newsSentiment.articles)}
   }
 }`;
@@ -901,26 +1042,43 @@ Provide realistic options strategy:
       throw new Error('Invalid JSON in AI response');
     }
     
-    // CRITICAL: Validate sentiment-strategy alignment
+    // CRITICAL: Validate sentiment-strategy alignment with weighted decision
     let strategyAutoCorrect = false;
-    if (newsSentiment.overall === 'negative' && prediction.optionType === 'CALL') {
-      console.error(`❌ STRATEGY CONFLICT: Negative sentiment but AI recommended CALL!`);
-      console.log('🔄 Auto-correcting strategy to PUT...');
-      
-      prediction.strategy = 'Long Put';
-      prediction.optionType = 'PUT';
-      prediction.reasoning = `${prediction.reasoning} [AUTO-CORRECTED: Negative news sentiment requires bearish PUT strategy]`;
-      strategyAutoCorrect = true;
-    }
+    const isStrongSentiment = newsSentiment.strength === 'strong_positive' || newsSentiment.strength === 'strong_negative';
+    const isHighConfidence = newsSentiment.confidence >= 70;
+    const shouldOverride = isStrongSentiment || (isHighConfidence && newsSentiment.strength !== 'neutral');
     
-    if (newsSentiment.overall === 'positive' && prediction.optionType === 'PUT') {
-      console.error(`❌ STRATEGY CONFLICT: Positive sentiment but AI recommended PUT!`);
-      console.log('🔄 Auto-correcting strategy to CALL...');
+    console.log(`
+🔍 STRATEGY VALIDATION:
+  Sentiment Strength: ${newsSentiment.strength}
+  Confidence: ${newsSentiment.confidence}%
+  Should Override: ${shouldOverride}
+  AI Recommended: ${prediction.optionType}
+`);
+    
+    // Override only on strong sentiment or high confidence non-neutral sentiment
+    if (shouldOverride) {
+      if ((newsSentiment.strength === 'negative' || newsSentiment.strength === 'strong_negative') && prediction.optionType === 'CALL') {
+        console.error(`❌ STRATEGY CONFLICT: ${newsSentiment.strength} sentiment (${newsSentiment.confidence}% confidence) but AI recommended CALL!`);
+        console.log('🔄 Auto-correcting strategy to PUT...');
+        
+        prediction.strategy = 'Long Put';
+        prediction.optionType = 'PUT';
+        prediction.reasoning = `${prediction.reasoning} [AUTO-CORRECTED: ${newsSentiment.strength} news sentiment (${newsSentiment.confidence}% confidence) overrides technical bullish signals]`;
+        strategyAutoCorrect = true;
+      }
       
-      prediction.strategy = 'Long Call';
-      prediction.optionType = 'CALL';
-      prediction.reasoning = `${prediction.reasoning} [AUTO-CORRECTED: Positive news sentiment requires bullish CALL strategy]`;
-      strategyAutoCorrect = true;
+      if ((newsSentiment.strength === 'positive' || newsSentiment.strength === 'strong_positive') && prediction.optionType === 'PUT') {
+        console.error(`❌ STRATEGY CONFLICT: ${newsSentiment.strength} sentiment (${newsSentiment.confidence}% confidence) but AI recommended PUT!`);
+        console.log('🔄 Auto-correcting strategy to CALL...');
+        
+        prediction.strategy = 'Long Call';
+        prediction.optionType = 'CALL';
+        prediction.reasoning = `${prediction.reasoning} [AUTO-CORRECTED: ${newsSentiment.strength} news sentiment (${newsSentiment.confidence}% confidence) overrides technical bearish signals]`;
+        strategyAutoCorrect = true;
+      }
+    } else {
+      console.log('✓ No override needed: Weak sentiment or low confidence, trusting technical analysis');
     }
     
     // Override with real NSE premium if available
@@ -938,18 +1096,20 @@ Provide realistic options strategy:
       console.log(`Overriding entry premium with REAL NSE put premium: ₹${realPutPremium}`);
     }
     
-    // Log prediction decision flow
+    // Log enhanced prediction decision flow
     console.log(`
 📊 PREDICTION DECISION FLOW:
-  1. News Sentiment: ${newsSentiment.overall}
-  2. Technical Trend: ${analysis.trend}
-  3. Trend Score (with sentiment): ${analysis.trendScore}
-  4. MACD Trend: ${analysis.macdTrend}
-  5. RSI: ${analysis.rsi}
-  6. AI Recommended: ${prediction.optionType}
-  7. Auto-Corrected: ${strategyAutoCorrect ? '✅ YES' : '❌ NO'}
-  8. Final Decision: ${prediction.optionType}
-  9. Validation: ${strategyAutoCorrect ? '⚠️ CONFLICT DETECTED & CORRECTED' : '✅ ALIGNED'}
+  1. News Sentiment: ${newsSentiment.overall} (${newsSentiment.strength}, ${newsSentiment.confidence}% confidence)
+  2. Weighted Score: ${newsSentiment.weightedScore}
+  3. Technical Trend: ${analysis.trend}
+  4. Trend Score (with sentiment): ${analysis.trendScore}
+  5. MACD Trend: ${analysis.macdTrend}
+  6. RSI: ${analysis.rsi}
+  7. AI Recommended: ${prediction.optionType}
+  8. Override Triggered: ${shouldOverride ? '✅ YES' : '❌ NO'}
+  9. Auto-Corrected: ${strategyAutoCorrect ? '✅ YES' : '❌ NO'}
+  10. Final Decision: ${prediction.optionType}
+  11. Validation: ${strategyAutoCorrect ? '⚠️ CONFLICT DETECTED & CORRECTED' : '✅ ALIGNED'}
 `);
     
     // Only validate AI estimates, NEVER validate real NSE data
@@ -1206,7 +1366,7 @@ function calculateImpliedVolatility(
   return Math.round(ivEstimate * 100) / 100;
 }
 
-function analyzeData(data: any[], newsSentiment?: { overall: string }) {
+function analyzeData(data: any[], newsSentiment?: { overall: string; strength?: string; confidence?: number; weightedScore?: number }) {
   const closes = data.map(d => d.close);
   const highs = data.map(d => d.high);
   const lows = data.map(d => d.low);
@@ -1296,14 +1456,27 @@ function analyzeData(data: any[], newsSentiment?: { overall: string }) {
   const support = Math.min(...recentLows);
   const resistance = Math.max(...recentHighs);
   
-  // === Multi-factor Trend Analysis (with News Sentiment Priority) ===
+  // === Multi-factor Trend Analysis (with Weighted News Sentiment Priority) ===
   let trendScore = 0;
   
-  // HIGHEST PRIORITY: News Sentiment (overrides technical signals)
+  // HIGHEST PRIORITY: Weighted News Sentiment (overrides technical signals)
   if (newsSentiment) {
-    if (newsSentiment.overall === 'positive') trendScore += 3;
-    if (newsSentiment.overall === 'negative') trendScore -= 3;
+    const sentiment = newsSentiment as any;
+    const strength = sentiment.strength || sentiment.overall;
+    
+    // Apply sentiment strength scoring
+    if (strength === 'strong_positive') trendScore += 5;
+    else if (strength === 'positive') trendScore += 2;
+    else if (strength === 'negative') trendScore -= 2;
+    else if (strength === 'strong_negative') trendScore -= 5;
     // neutral adds 0
+    
+    console.log(`  Sentiment contribution to trend: ${strength} = ${
+      strength === 'strong_positive' ? '+5' :
+      strength === 'positive' ? '+2' :
+      strength === 'negative' ? '-2' :
+      strength === 'strong_negative' ? '-5' : '0'
+    } points`);
   }
   
   // Technical indicators (secondary)
