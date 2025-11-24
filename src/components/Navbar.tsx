@@ -1,10 +1,12 @@
-import { TrendingUp, LogOut, Shield } from "lucide-react";
+import { TrendingUp, LogOut, Shield, Home, BarChart3, Menu, X } from "lucide-react";
 import { Button } from "./ui/button";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import type { User } from "@supabase/supabase-js";
+import { Avatar, AvatarFallback } from "./ui/avatar";
+import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
 
 const Navbar = () => {
   const location = useLocation();
@@ -13,6 +15,9 @@ const Navbar = () => {
   const isHomePage = location.pathname === '/';
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
+  const isActive = (path: string) => location.pathname === path;
   
   useEffect(() => {
     // Get initial session
@@ -73,17 +78,48 @@ const Navbar = () => {
         </Link>
         
         <div className="hidden md:flex items-center gap-6">
-          <Link to="/" className="text-foreground hover:text-primary transition-colors">
+          <Link 
+            to="/" 
+            className={`flex items-center gap-2 transition-colors ${
+              isActive('/') 
+                ? 'text-primary font-semibold' 
+                : 'text-foreground hover:text-primary'
+            }`}
+          >
+            <Home className="h-4 w-4" />
             Home
           </Link>
-          <Link to="/options" className="text-foreground hover:text-primary transition-colors">
+          <Link 
+            to="/options" 
+            className={`flex items-center gap-2 transition-colors ${
+              isActive('/options') 
+                ? 'text-primary font-semibold' 
+                : 'text-foreground hover:text-primary'
+            }`}
+          >
+            <TrendingUp className="h-4 w-4" />
             Options Trading
           </Link>
-          <Link to="/backtesting" className="text-foreground hover:text-primary transition-colors">
+          <Link 
+            to="/backtesting" 
+            className={`flex items-center gap-2 transition-colors ${
+              isActive('/backtesting') 
+                ? 'text-primary font-semibold' 
+                : 'text-foreground hover:text-primary'
+            }`}
+          >
+            <BarChart3 className="h-4 w-4" />
             Backtesting
           </Link>
           {isAdmin && (
-            <Link to="/admin" className="text-foreground hover:text-primary transition-colors flex items-center gap-1">
+            <Link 
+              to="/admin" 
+              className={`flex items-center gap-2 transition-colors ${
+                isActive('/admin') 
+                  ? 'text-primary font-semibold' 
+                  : 'text-foreground hover:text-primary'
+              }`}
+            >
               <Shield className="h-4 w-4" />
               Admin
             </Link>
@@ -103,23 +139,135 @@ const Navbar = () => {
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {user ? (
-            <Button 
-              variant="outline"
-              onClick={handleLogout}
-              className="flex items-center gap-2"
-            >
-              <LogOut className="h-4 w-4" />
-              Logout
-            </Button>
+            <>
+              <div className="hidden md:flex items-center gap-2">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="bg-primary text-primary-foreground">
+                    {user.email?.[0].toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-sm text-foreground">{user.email}</span>
+              </div>
+              <div className="h-6 w-px bg-border hidden md:block" />
+              <Button 
+                variant="outline"
+                onClick={handleLogout}
+                className="hidden md:flex items-center gap-2"
+              >
+                <LogOut className="h-4 w-4" />
+                Logout
+              </Button>
+            </>
           ) : (
             <Button 
               onClick={() => navigate("/auth")}
+              className="hidden md:flex"
             >
               Login
             </Button>
           )}
+          
+          {/* Mobile Menu */}
+          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="md:hidden">
+                <Menu className="h-6 w-6" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-[300px] sm:w-[400px]">
+              <nav className="flex flex-col gap-4 mt-8">
+                <Link 
+                  to="/" 
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                    isActive('/') 
+                      ? 'bg-primary text-primary-foreground font-semibold' 
+                      : 'text-foreground hover:bg-muted'
+                  }`}
+                >
+                  <Home className="h-5 w-5" />
+                  Home
+                </Link>
+                <Link 
+                  to="/options" 
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                    isActive('/options') 
+                      ? 'bg-primary text-primary-foreground font-semibold' 
+                      : 'text-foreground hover:bg-muted'
+                  }`}
+                >
+                  <TrendingUp className="h-5 w-5" />
+                  Options Trading
+                </Link>
+                <Link 
+                  to="/backtesting" 
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                    isActive('/backtesting') 
+                      ? 'bg-primary text-primary-foreground font-semibold' 
+                      : 'text-foreground hover:bg-muted'
+                  }`}
+                >
+                  <BarChart3 className="h-5 w-5" />
+                  Backtesting
+                </Link>
+                {isAdmin && (
+                  <Link 
+                    to="/admin" 
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                      isActive('/admin') 
+                        ? 'bg-primary text-primary-foreground font-semibold' 
+                        : 'text-foreground hover:bg-muted'
+                    }`}
+                  >
+                    <Shield className="h-5 w-5" />
+                    Admin Dashboard
+                  </Link>
+                )}
+                
+                {user && (
+                  <>
+                    <div className="h-px bg-border my-2" />
+                    <div className="flex items-center gap-3 px-4 py-2">
+                      <Avatar className="h-10 w-10">
+                        <AvatarFallback className="bg-primary text-primary-foreground">
+                          {user.email?.[0].toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm text-foreground">{user.email}</span>
+                    </div>
+                    <Button 
+                      variant="outline"
+                      onClick={() => {
+                        handleLogout();
+                        setMobileMenuOpen(false);
+                      }}
+                      className="mx-4 flex items-center gap-2"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Logout
+                    </Button>
+                  </>
+                )}
+                
+                {!user && (
+                  <Button 
+                    onClick={() => {
+                      navigate("/auth");
+                      setMobileMenuOpen(false);
+                    }}
+                    className="mx-4"
+                  >
+                    Login
+                  </Button>
+                )}
+              </nav>
+            </SheetContent>
+          </Sheet>
         </div>
       </div>
     </nav>
