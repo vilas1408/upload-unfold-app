@@ -21,9 +21,14 @@ serve(async (req) => {
     console.log(`Tracking prediction for ${symbol} - ${prediction.strategy}`);
 
     // Track for 7 days or until expiry, whichever is sooner
+    // FIX: Set tracked_until to end of expiry day IST (3:30 PM market close = 10:00 UTC)
     const expiryDate = new Date(prediction.expiryDate);
+    expiryDate.setUTCHours(10, 0, 0, 0); // 3:30 PM IST = 10:00 UTC
+    
     const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    const trackUntil = expiryDate < sevenDaysFromNow ? expiryDate : sevenDaysFromNow;
+    const trackUntil = expiryDate > new Date() 
+      ? (expiryDate < sevenDaysFromNow ? expiryDate : sevenDaysFromNow)
+      : new Date(Date.now() + 24 * 60 * 60 * 1000); // Minimum 24 hours tracking
 
     const { error } = await supabase
       .from('prediction_tracking')

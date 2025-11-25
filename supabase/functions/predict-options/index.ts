@@ -641,6 +641,31 @@ serve(async (req) => {
 
     console.log(`✅ User ${user.email} quota check: ${predictionsUsed}/${planData.daily_prediction_limit} used today`);
 
+    // PHASE 3: Fetch auto-learning tuning parameters
+    const currentDay = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][istNow.getUTCDay()];
+    const { data: tuningData } = await supabase
+      .from('prediction_tuning')
+      .select('*')
+      .in('tuning_key', [symbol, currentDay]);
+    
+    let symbolAdjustment = 0;
+    let dayAdjustment = 0;
+    let learningContext = '';
+    
+    if (tuningData && tuningData.length > 0) {
+      for (const tuning of tuningData) {
+        if (tuning.tuning_type === 'symbol' && tuning.tuning_key === symbol) {
+          symbolAdjustment = tuning.confidence_adjustment || 0;
+          learningContext += `\n- ${symbol} historical accuracy: ${tuning.accuracy_rate?.toFixed(1)}% (${tuning.sample_size} predictions, confidence: ${symbolAdjustment > 0 ? '+' : ''}${symbolAdjustment}%)`;
+        }
+        if (tuning.tuning_type === 'day' && tuning.tuning_key === currentDay) {
+          dayAdjustment = tuning.confidence_adjustment || 0;
+          learningContext += `\n- ${currentDay} historical accuracy: ${tuning.accuracy_rate?.toFixed(1)}% (${tuning.sample_size} predictions, confidence: ${dayAdjustment > 0 ? '+' : ''}${dayAdjustment}%)`;
+        }
+      }
+      console.log(`📚 Learning adjustments: Symbol ${symbolAdjustment}%, Day ${dayAdjustment}%`);
+    }
+
     // Fetch historical data
     const historicalData = await fetchStockData(symbol);
     let analysis = analyzeData(historicalData); // Will be re-analyzed after news fetch
@@ -1255,6 +1280,11 @@ ${ivContext}
 
 ${premiumContext}
 
+${learningContext ? `
+HISTORICAL LEARNING DATA (Auto-tuned from past predictions):${learningContext}
+
+Use this historical performance data to adjust your confidence. If accuracy is low (<50%), be more conservative.` : ''}
+
 ⚠️ CRITICAL RULE: NEWS SENTIMENT OVERRIDES TECHNICAL ANALYSIS
 - If NEWS SENTIMENT is "negative" → YOU MUST RECOMMEND "Long Put" (BEARISH) with PUT option
 - If NEWS SENTIMENT is "positive" → YOU MUST RECOMMEND "Long Call" (BULLISH) with CALL option
@@ -1428,9 +1458,18 @@ Provide realistic options strategy:
                         analysis.volumeRatio < 0.8 ? -30 : 0;
     
     // Weighted confidence score
-    const confidenceScore = (sentimentScore * sentimentWeight) + 
+    const baseConfidenceScore = (sentimentScore * sentimentWeight) + 
                            (technicalScore * technicalWeight) + 
                            (volumeScore * volumeWeight);
+    
+    // PHASE 3: Apply auto-learning adjustments
+    const confidenceScore = Math.max(0, Math.min(100, 
+      baseConfidenceScore + symbolAdjustment + dayAdjustment
+    ));
+    
+    if (symbolAdjustment !== 0 || dayAdjustment !== 0) {
+      console.log(`📊 Confidence adjusted: Base ${baseConfidenceScore.toFixed(1)}% → Final ${confidenceScore.toFixed(1)}% (Symbol: ${symbolAdjustment > 0 ? '+' : ''}${symbolAdjustment}%, Day: ${dayAdjustment > 0 ? '+' : ''}${dayAdjustment}%)`);
+    }
     
     // Strategy override logic (only when high confidence and conflicting signals)
     let strategyAutoCorrect = false;
