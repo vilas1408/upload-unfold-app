@@ -136,57 +136,85 @@ const Auth = () => {
   };
 
   const updateProfileAndRequestApproval = async (userId: string, metadata: any) => {
-    const { data: roleData } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId)
-      .eq('role', 'admin')
-      .single();
+    try {
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .eq('role', 'admin')
+        .single();
 
-    const isAdmin = !!roleData;
-    
-    const mobileFromMetadata = metadata?.mobile_number;
-    const dobFromMetadata = metadata?.date_of_birth;
-    
-    // Update profile with additional info
-    await supabase
-      .from("profiles")
-      .update({
-        mobile_number: mobileFromMetadata,
-        date_of_birth: dobFromMetadata,
-        is_approved: isAdmin,
-        approved_at: isAdmin ? new Date().toISOString() : null,
-      })
-      .eq("id", userId);
-
-    if (isAdmin) {
-      toast({
-        title: "Welcome Admin!",
-        description: "Your account has been automatically approved.",
-      });
-      navigate("/");
-    } else {
-      const { data: { user } } = await supabase.auth.getUser();
+      const isAdmin = !!roleData;
       
-      // Send approval request email to admin
-      await supabase.functions.invoke("send-approval-request", {
-        body: {
-          email: user?.email,
+      const mobileFromMetadata = metadata?.mobile_number;
+      const dobFromMetadata = metadata?.date_of_birth;
+      
+      // Update profile with additional info
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({
           mobile_number: mobileFromMetadata,
           date_of_birth: dobFromMetadata,
-          user_id: userId,
-        },
-      });
+          is_approved: isAdmin,
+          approved_at: isAdmin ? new Date().toISOString() : null,
+        })
+        .eq("id", userId);
 
-      // Sign out regular users
-      await supabase.auth.signOut();
+      if (updateError) {
+        console.error("Failed to update profile:", updateError);
+        toast({
+          title: "Error",
+          description: "Failed to update profile. Please contact support.",
+          variant: "destructive",
+        });
+        throw updateError;
+      }
 
+      if (isAdmin) {
+        toast({
+          title: "Welcome Admin!",
+          description: "Your account has been automatically approved.",
+        });
+        navigate("/");
+      } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        // Send approval request email to admin
+        const { error: approvalError } = await supabase.functions.invoke("send-approval-request", {
+          body: {
+            email: user?.email,
+            mobile_number: mobileFromMetadata,
+            date_of_birth: dobFromMetadata,
+            user_id: userId,
+          },
+        });
+
+        if (approvalError) {
+          console.error("Failed to send approval request:", approvalError);
+          toast({
+            title: "Warning",
+            description: "Profile updated but admin notification failed. Please contact support.",
+            variant: "destructive",
+          });
+        }
+
+        // Sign out regular users
+        await supabase.auth.signOut();
+
+        toast({
+          title: "Email verified!",
+          description: "Your account is pending admin approval. You'll receive an email once approved.",
+        });
+        
+        setEmailVerificationPending(false);
+      }
+    } catch (error) {
+      console.error("updateProfileAndRequestApproval failed:", error);
       toast({
-        title: "Email verified!",
-        description: "Your account is pending admin approval. You'll receive an email once approved.",
+        title: "Error",
+        description: "Failed to complete registration. Please contact support.",
+        variant: "destructive",
       });
-      
-      setEmailVerificationPending(false);
     }
   };
 
@@ -252,8 +280,12 @@ const Auth = () => {
           });
         }
       } else if (data.user) {
-        if (data.user.confirmed_at) {
-          // Email already confirmed (shouldn't happen for new signups)
+        // Re-fetch user to get actual confirmation status (handles auto-confirm)
+        const { data: userData } = await supabase.auth.getUser();
+        
+        if (userData.user?.confirmed_at || userData.user?.email_confirmed_at) {
+          // Email already confirmed (auto-confirm enabled)
+          console.log("Email auto-confirmed, updating profile and requesting approval");
           await updateProfileAndRequestApproval(data.user.id, data.user.user_metadata);
         } else {
           // Email verification required
