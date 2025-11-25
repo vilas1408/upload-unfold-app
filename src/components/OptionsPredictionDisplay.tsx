@@ -181,6 +181,15 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData, dataSour
                   <p className="text-xs text-muted-foreground mt-1">per lot</p>
                 </div>
               </div>
+              <div className="flex items-center justify-center gap-2 mt-3 text-xs text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                <span>Last updated: {new Date().toLocaleTimeString('en-IN', { 
+                  hour: '2-digit', 
+                  minute: '2-digit',
+                  second: '2-digit',
+                  timeZone: 'Asia/Kolkata'
+                })} IST</span>
+              </div>
             </Card>
           )}
 
