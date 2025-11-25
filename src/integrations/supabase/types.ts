@@ -283,6 +283,36 @@ export type Database = {
           },
         ]
       }
+      prediction_tuning: {
+        Row: {
+          accuracy_rate: number | null
+          confidence_adjustment: number | null
+          id: string
+          last_calculated_at: string | null
+          sample_size: number | null
+          tuning_key: string
+          tuning_type: string
+        }
+        Insert: {
+          accuracy_rate?: number | null
+          confidence_adjustment?: number | null
+          id?: string
+          last_calculated_at?: string | null
+          sample_size?: number | null
+          tuning_key: string
+          tuning_type: string
+        }
+        Update: {
+          accuracy_rate?: number | null
+          confidence_adjustment?: number | null
+          id?: string
+          last_calculated_at?: string | null
+          sample_size?: number | null
+          tuning_key?: string
+          tuning_type?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           approved_at: string | null
