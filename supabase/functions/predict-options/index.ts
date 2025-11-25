@@ -226,7 +226,13 @@ async function fetchNSEOptionChain(symbol: string, type: 'index' | 'share'): Pro
     
     return { data, marketLot };
   } catch (error) {
-    console.error('Error fetching NSE option chain:', error);
+    console.error('❌ CRITICAL: NSE API CALL FAILED:', error);
+    console.error('⚠️ Possible causes:');
+    console.error('  - NSE rate limiting or blocking requests');
+    console.error('  - Cookie expired or missing');
+    console.error('  - Incorrect symbol format');
+    console.error('  - Network timeout');
+    console.error('📊 System will fall back to AI_ESTIMATED mode with approximate premiums');
     return { data: null, marketLot: null };
   }
 }
@@ -1087,6 +1093,16 @@ Return this JSON format:
         // Store IV metrics for future comparisons
         await storeIVMetrics(symbol, avgIV, ivRank, ivPercentile, supabaseUrl, supabaseKey);
       }
+    } else {
+      // NSE data fetch failed - log detailed error
+      console.error('❌ NSE DATA UNAVAILABLE for', symbol);
+      console.error('⚠️ Falling back to AI_ESTIMATED mode with approximate premiums');
+      console.error('📋 Possible causes:');
+      console.error('  - NSE API rate limiting or blocking requests');
+      console.error('  - Session cookies expired');
+      console.error('  - Incorrect symbol format for NSE');
+      console.error('  - Network timeout or connectivity issues');
+      console.error('💡 Impact: Premiums will be estimated ranges, not live NSE prices');
     }
     
     // PRIORITY 1: Use NSE API marketLot if available (most authoritative)

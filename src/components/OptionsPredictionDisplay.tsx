@@ -126,8 +126,8 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData, dataSour
                 </Badge>
                 {dataSource && (
                   <Badge 
-                    variant={dataSource === 'NSE_LIVE' ? 'default' : 'secondary'} 
-                    className="flex items-center gap-1"
+                    variant={dataSource === 'NSE_LIVE' ? 'default' : 'destructive'} 
+                    className={dataSource === 'NSE_LIVE' ? 'flex items-center gap-1 bg-green-600 hover:bg-green-700' : 'flex items-center gap-1 bg-amber-600 hover:bg-amber-700'}
                   >
                     {dataSource === 'NSE_LIVE' ? (
                       <>
@@ -136,8 +136,8 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData, dataSour
                       </>
                     ) : (
                       <>
-                        <Brain className="h-3 w-3" />
-                        AI Estimated
+                        <AlertTriangle className="h-3 w-3" />
+                        Estimated Premiums - NSE Unavailable
                       </>
                     )}
                   </Badge>
