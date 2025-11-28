@@ -1295,7 +1295,13 @@ SECONDARY RULES (only if sentiment is neutral):
 - BEARISH technical signals: Recommend BUY PUT
 - Provide SPECIFIC entry, target, and stop loss prices
 - Consider time decay (theta) impact given ${daysToExpiry} days to expiry
-${dataSource === 'NSE_LIVE' ? '- Use REAL premiums from NSE data' : '- Use ESTIMATED premiums with realistic time value'}`;
+${dataSource === 'NSE_LIVE' ? '- Use REAL premiums from NSE data' : '- Use ESTIMATED premiums with realistic time value'}
+
+🔴 CRITICAL JSON FORMATTING RULE:
+ALL numeric values in your JSON response MUST be CALCULATED NUMBERS, NOT mathematical expressions or formulas.
+✅ CORRECT: "target": 1791
+❌ WRONG: "target": 75 * (103.48 - 79.6)
+Calculate all math operations and provide the final numeric result only.`;
 
     const userPrompt = `Analyze ${name} (${symbol}). 
 
@@ -1349,9 +1355,9 @@ Provide realistic options strategy:
   "targetExitPrice": <realistic target price for profit>,
   "stopLossPrice": <realistic stop loss price>,
   "profitLoss": {
-    "target": <profit amount in rupees>,
-    "stopLoss": <loss amount as negative>,
-    "breakeven": <strike ± premium>
+    "target": <CALCULATED profit number in rupees, e.g. 1791 NOT 75*(103.48-79.6)>,
+    "stopLoss": <CALCULATED loss as negative number, e.g. -2388 NOT 75*(-31.8)>,
+    "breakeven": <CALCULATED breakeven price, e.g. 26120.4 NOT 26100+20.4>
   },
   "expectedReturn": <30-50 percentage>,
   "probability": "<40-70>%",
@@ -1423,9 +1429,33 @@ Provide realistic options strategy:
       throw new Error('Could not parse AI response');
     }
 
+    // Helper function to sanitize JSON by evaluating mathematical expressions
+    const sanitizeJSON = (jsonString: string): string => {
+      // Match and replace mathematical expressions like "75 * (103.48 - 79.6)" with calculated values
+      return jsonString.replace(/:\s*([0-9]+(?:\.[0-9]+)?)\s*([+\-*/])\s*\(([^)]+)\)/g, (match, num1, operator, expression) => {
+        try {
+          // Safely evaluate simple math expressions
+          const fullExpression = `${num1} ${operator} (${expression})`;
+          const result = Function(`"use strict"; return (${fullExpression})`)();
+          return `: ${result}`;
+        } catch {
+          return match; // Return original if evaluation fails
+        }
+      }).replace(/:\s*([0-9]+(?:\.[0-9]+)?)\s*([+\-*/])\s*([0-9]+(?:\.[0-9]+)?)/g, (match, num1, operator, num2) => {
+        try {
+          // Handle simple expressions like "26100 + 20.4"
+          const result = Function(`"use strict"; return (${num1} ${operator} ${num2})`)();
+          return `: ${result}`;
+        } catch {
+          return match;
+        }
+      });
+    };
+
     let prediction;
     try {
-      prediction = JSON.parse(jsonMatch[0]);
+      const sanitizedJSON = sanitizeJSON(jsonMatch[0]);
+      prediction = JSON.parse(sanitizedJSON);
     } catch (parseError) {
       console.error('JSON parse error:', parseError);
       console.error('Content to parse:', jsonMatch[0]);
