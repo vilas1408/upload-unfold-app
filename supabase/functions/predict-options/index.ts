@@ -237,6 +237,159 @@ async function fetchNSEOptionChain(symbol: string, type: 'index' | 'share'): Pro
   }
 }
 
+// PRIORITY 2: Calculate Put-Call Ratio (PCR) from option chain data
+function calculatePCR(optionChainData: any): { pcr: number | null, pcrOI: number | null, interpretation: string } {
+  try {
+    const records = optionChainData?.records?.data || [];
+    if (records.length === 0) return { pcr: null, pcrOI: null, interpretation: 'N/A' };
+
+    let totalCallOI = 0;
+    let totalPutOI = 0;
+    let totalCallVolume = 0;
+    let totalPutVolume = 0;
+
+    for (const record of records) {
+      if (record.CE) {
+        totalCallOI += record.CE.openInterest || 0;
+        totalCallVolume += record.CE.totalTradedVolume || 0;
+      }
+      if (record.PE) {
+        totalPutOI += record.PE.openInterest || 0;
+        totalPutVolume += record.PE.totalTradedVolume || 0;
+      }
+    }
+
+    const pcrOI = totalCallOI > 0 ? totalPutOI / totalCallOI : null;
+    const pcrVolume = totalCallVolume > 0 ? totalPutVolume / totalCallVolume : null;
+
+    let interpretation = 'Neutral';
+    if (pcrOI !== null) {
+      if (pcrOI > 1.2) interpretation = 'Bullish (High put writing = support expected)';
+      else if (pcrOI > 1.0) interpretation = 'Mildly Bullish';
+      else if (pcrOI > 0.8) interpretation = 'Neutral';
+      else if (pcrOI > 0.6) interpretation = 'Mildly Bearish';
+      else interpretation = 'Bearish (High call writing = resistance expected)';
+    }
+
+    console.log(`PCR Analysis: OI=${pcrOI?.toFixed(2)}, Volume=${pcrVolume?.toFixed(2)}, Signal=${interpretation}`);
+
+    return { pcr: pcrVolume, pcrOI, interpretation };
+  } catch (error) {
+    console.error('Error calculating PCR:', error);
+    return { pcr: null, pcrOI: null, interpretation: 'N/A' };
+  }
+}
+
+// PRIORITY 3: Calculate Fibonacci Retracement Levels
+function calculateFibonacciLevels(high: number, low: number, trend: string): { levels: { [key: string]: number }, interpretation: string } {
+  const diff = high - low;
+  
+  // Fibonacci retracement levels
+  const levels = {
+    '0%': trend === 'Bullish' ? high : low,
+    '23.6%': trend === 'Bullish' ? high - (diff * 0.236) : low + (diff * 0.236),
+    '38.2%': trend === 'Bullish' ? high - (diff * 0.382) : low + (diff * 0.382),
+    '50%': trend === 'Bullish' ? high - (diff * 0.5) : low + (diff * 0.5),
+    '61.8%': trend === 'Bullish' ? high - (diff * 0.618) : low + (diff * 0.618),
+    '78.6%': trend === 'Bullish' ? high - (diff * 0.786) : low + (diff * 0.786),
+    '100%': trend === 'Bullish' ? low : high
+  };
+
+  const interpretation = trend === 'Bullish' 
+    ? 'Look for buying opportunities at 38.2% or 61.8% retracement levels'
+    : 'Look for selling opportunities at 38.2% or 61.8% retracement levels';
+
+  console.log(`Fibonacci Levels (${trend}): 38.2%=${levels['38.2%'].toFixed(2)}, 50%=${levels['50%'].toFixed(2)}, 61.8%=${levels['61.8%'].toFixed(2)}`);
+
+  return { levels, interpretation };
+}
+
+// PRIORITY 3: Calculate Daily Pivot Points
+function calculatePivotPoints(high: number, low: number, close: number): { 
+  pivot: number, 
+  r1: number, r2: number, r3: number, 
+  s1: number, s2: number, s3: number,
+  interpretation: string 
+} {
+  const pivot = (high + low + close) / 3;
+  
+  // Standard Pivot Point formula
+  const r1 = (2 * pivot) - low;
+  const r2 = pivot + (high - low);
+  const r3 = high + 2 * (pivot - low);
+  
+  const s1 = (2 * pivot) - high;
+  const s2 = pivot - (high - low);
+  const s3 = low - 2 * (high - pivot);
+
+  let interpretation: string;
+  if (close > pivot) {
+    interpretation = `Price above pivot (₹${pivot.toFixed(2)}) - Bullish bias. R1: ₹${r1.toFixed(2)}, R2: ₹${r2.toFixed(2)}`;
+  } else {
+    interpretation = `Price below pivot (₹${pivot.toFixed(2)}) - Bearish bias. S1: ₹${s1.toFixed(2)}, S2: ₹${s2.toFixed(2)}`;
+  }
+
+  console.log(`Pivot Points: P=${pivot.toFixed(2)}, R1=${r1.toFixed(2)}, R2=${r2.toFixed(2)}, S1=${s1.toFixed(2)}, S2=${s2.toFixed(2)}`);
+
+  return { pivot, r1, r2, r3, s1, s2, s3, interpretation };
+}
+
+// PRIORITY 2: Calculate Max Pain (strike with maximum OI loss for option writers)
+function calculateMaxPain(optionChainData: any): { maxPain: number | null, interpretation: string } {
+  try {
+    const records = optionChainData?.records?.data || [];
+    if (records.length === 0) return { maxPain: null, interpretation: 'N/A' };
+
+    // Get unique strikes
+    const strikesSet = new Set<number>();
+    for (const r of records) {
+      if (typeof r.strikePrice === 'number') {
+        strikesSet.add(r.strikePrice);
+      }
+    }
+    const strikes = Array.from(strikesSet).sort((a, b) => a - b);
+    
+    let minPain = Infinity;
+    let maxPainStrike: number | null = null;
+
+    for (const testStrike of strikes) {
+      let totalPain = 0;
+
+      for (const record of records) {
+        const strike = record.strikePrice as number;
+        const callOI = record.CE?.openInterest || 0;
+        const putOI = record.PE?.openInterest || 0;
+
+        // Call option pain (intrinsic value if ITM)
+        if (testStrike > strike) {
+          totalPain += callOI * (testStrike - strike);
+        }
+
+        // Put option pain (intrinsic value if ITM)
+        if (testStrike < strike) {
+          totalPain += putOI * (strike - testStrike);
+        }
+      }
+
+      if (totalPain < minPain) {
+        minPain = totalPain;
+        maxPainStrike = testStrike;
+      }
+    }
+
+    const interpretation = maxPainStrike 
+      ? `Max Pain at ₹${maxPainStrike} - Price tends to gravitate here by expiry`
+      : 'Unable to calculate Max Pain';
+
+    console.log(`Max Pain: ${maxPainStrike}`);
+
+    return { maxPain: maxPainStrike, interpretation };
+  } catch (error) {
+    console.error('Error calculating Max Pain:', error);
+    return { maxPain: null, interpretation: 'N/A' };
+  }
+}
+
 // Extract ATM premium and IV from NSE option chain data
 function extractATMPremiumAndIV(optionChainData: any, currentPrice: number, optionType: 'CE' | 'PE'): { premium: number | null, iv: number | null } {
   try {
@@ -1118,7 +1271,36 @@ Return this JSON format:
         // Store IV metrics for future comparisons
         await storeIVMetrics(symbol, avgIV, ivRank, ivPercentile, supabaseUrl, supabaseKey);
       }
-    } else {
+    }
+
+    // PRIORITY 2 & 3: Calculate PCR, Max Pain, Fibonacci, and Pivot Points
+    let pcrAnalysis = { pcr: null as number | null, pcrOI: null as number | null, interpretation: 'N/A' };
+    let maxPainAnalysis = { maxPain: null as number | null, interpretation: 'N/A' };
+    let fibonacciAnalysis = { levels: {} as { [key: string]: number }, interpretation: 'N/A' };
+    let pivotAnalysis = { pivot: 0, r1: 0, r2: 0, r3: 0, s1: 0, s2: 0, s3: 0, interpretation: 'N/A' };
+
+    // Calculate from NSE option chain data if available
+    if (nseResult.data) {
+      pcrAnalysis = calculatePCR(nseResult.data);
+      maxPainAnalysis = calculateMaxPain(nseResult.data);
+    }
+
+    // Calculate Fibonacci from historical data
+    if (historicalData.length > 0) {
+      const highs = historicalData.map((d: any) => d.high);
+      const lows = historicalData.map((d: any) => d.low);
+      const recentHigh = Math.max(...highs.slice(-20));
+      const recentLow = Math.min(...lows.slice(-20));
+      fibonacciAnalysis = calculateFibonacciLevels(recentHigh, recentLow, analysis.trend.includes('Bullish') ? 'Bullish' : 'Bearish');
+
+      // Calculate Pivot Points from yesterday's data
+      const yesterdayData = historicalData[historicalData.length - 2];
+      if (yesterdayData) {
+        pivotAnalysis = calculatePivotPoints(yesterdayData.high, yesterdayData.low, yesterdayData.close);
+      }
+    }
+
+    if (!nseResult.data) {
       // NSE data fetch failed - log detailed error
       console.error('❌ NSE DATA UNAVAILABLE for', symbol);
       console.error('⚠️ Falling back to AI_ESTIMATED mode with approximate premiums');
@@ -1328,6 +1510,22 @@ VOLUME & VOLATILITY:
 SUPPORT & RESISTANCE:
 - Support: ₹${analysis.support}
 - Resistance: ₹${analysis.resistance}
+
+OPTIONS FLOW ANALYSIS (PRIORITY 2):
+- Put-Call Ratio (OI): ${pcrAnalysis.pcrOI?.toFixed(2) ?? 'N/A'} - ${pcrAnalysis.interpretation}
+- Max Pain: ${maxPainAnalysis.maxPain ? `₹${maxPainAnalysis.maxPain}` : 'N/A'} - ${maxPainAnalysis.interpretation}
+
+PIVOT POINTS (PRIORITY 3):
+- Pivot: ₹${pivotAnalysis.pivot.toFixed(2)}
+- Resistance 1: ₹${pivotAnalysis.r1.toFixed(2)}, R2: ₹${pivotAnalysis.r2.toFixed(2)}
+- Support 1: ₹${pivotAnalysis.s1.toFixed(2)}, S2: ₹${pivotAnalysis.s2.toFixed(2)}
+- ${pivotAnalysis.interpretation}
+
+FIBONACCI LEVELS (PRIORITY 3):
+- 38.2%: ₹${fibonacciAnalysis.levels['38.2%']?.toFixed(2) ?? 'N/A'}
+- 50%: ₹${fibonacciAnalysis.levels['50%']?.toFixed(2) ?? 'N/A'}
+- 61.8%: ₹${fibonacciAnalysis.levels['61.8%']?.toFixed(2) ?? 'N/A'}
+- ${fibonacciAnalysis.interpretation}
 
 OVERALL TREND: ${analysis.trend} (Score: ${analysis.trendScore}/10)
 
@@ -1809,6 +2007,27 @@ Position Sizing:
             support: analysis.support,
             resistance: analysis.resistance
           }
+        },
+        // PRIORITY 2: Options Flow Analysis
+        optionsFlow: {
+          pcr: pcrAnalysis.pcr,
+          pcrOI: pcrAnalysis.pcrOI,
+          pcrInterpretation: pcrAnalysis.interpretation,
+          maxPain: maxPainAnalysis.maxPain,
+          maxPainInterpretation: maxPainAnalysis.interpretation
+        },
+        // PRIORITY 3: Fibonacci & Pivot Points
+        fibonacciLevels: fibonacciAnalysis.levels,
+        fibonacciInterpretation: fibonacciAnalysis.interpretation,
+        pivotPoints: {
+          pivot: pivotAnalysis.pivot,
+          r1: pivotAnalysis.r1,
+          r2: pivotAnalysis.r2,
+          r3: pivotAnalysis.r3,
+          s1: pivotAnalysis.s1,
+          s2: pivotAnalysis.s2,
+          s3: pivotAnalysis.s3,
+          interpretation: pivotAnalysis.interpretation
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -96,3 +96,9 @@ verify_jwt = true
 
 [functions.auto-tune-predictions]
 verify_jwt = false
+
+[functions.update-prediction-outcomes]
+verify_jwt = false
+
+[functions.track-prediction]
+verify_jwt = false
