@@ -185,10 +185,24 @@ async function fetchLotSizeFromNiftyTrader(symbol: string): Promise<number | nul
   }
 }
 
+// Format date for NSE API (DD-MMM-YYYY format e.g., "09-Dec-2025")
+function formatExpiryForNSE(date: Date): string {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const day = date.getUTCDate().toString().padStart(2, '0');
+  const month = months[date.getUTCMonth()];
+  const year = date.getUTCFullYear();
+  return `${day}-${month}-${year}`;
+}
+
 // Fetch option chain data from NSE and extract marketLot
-async function fetchNSEOptionChain(symbol: string, type: 'index' | 'share'): Promise<{ data: any, marketLot: number | null }> {
+async function fetchNSEOptionChain(
+  symbol: string, 
+  type: 'index' | 'share',
+  expiryDateNSE?: string  // Format 'DD-MMM-YYYY' e.g., '09-Dec-2025'
+): Promise<{ data: any, marketLot: number | null, availableExpiries: string[], usedExpiry: string | null }> {
   try {
-    console.log(`Fetching NSE option chain for ${type}:`, symbol);
+    console.log(`Fetching NSE option chain for ${type}: ${symbol}${expiryDateNSE ? ` (expiry: ${expiryDateNSE})` : ''}`);
     
     // Get fresh cookies
     const cookies = await getNSECookies();
@@ -198,8 +212,10 @@ async function fetchNSEOptionChain(symbol: string, type: 'index' | 'share'): Pro
       ? 'https://www.nseindia.com/api/option-chain-indices'
       : 'https://www.nseindia.com/api/option-chain-equities';
     
+    // Build URL with expiry filter if provided
+    let url = `${baseUrl}?symbol=${symbol}`;
+    
     // Fetch option chain data
-    const url = `${baseUrl}?symbol=${symbol}`;
     const response = await fetch(url, {
       headers: {
         ...NSE_HEADERS,
@@ -209,14 +225,62 @@ async function fetchNSEOptionChain(symbol: string, type: 'index' | 'share'): Pro
     
     if (!response.ok) {
       console.error(`NSE API returned status ${response.status}`);
-      return { data: null, marketLot: null };
+      return { data: null, marketLot: null, availableExpiries: [], usedExpiry: null };
     }
     
     const data = await response.json();
     console.log('Successfully fetched NSE option chain data');
     
+    // Extract available expiry dates from NSE response
+    const availableExpiries: string[] = data?.records?.expiryDates || [];
+    console.log(`Available expiries from NSE: ${availableExpiries.slice(0, 5).join(', ')}${availableExpiries.length > 5 ? '...' : ''}`);
+    
+    // Determine which expiry to use
+    let usedExpiry: string | null = null;
+    let filteredData = data;
+    
+    if (expiryDateNSE && availableExpiries.length > 0) {
+      // Check if requested expiry is available
+      if (availableExpiries.includes(expiryDateNSE)) {
+        usedExpiry = expiryDateNSE;
+        console.log(`✓ Using requested expiry: ${expiryDateNSE}`);
+      } else {
+        // Find nearest available expiry
+        const requestedDate = new Date(expiryDateNSE.replace(/-/g, ' '));
+        let nearestExpiry = availableExpiries[0];
+        let minDiff = Infinity;
+        
+        for (const expiry of availableExpiries) {
+          const expiryDate = new Date(expiry.replace(/-/g, ' '));
+          const diff = Math.abs(expiryDate.getTime() - requestedDate.getTime());
+          if (diff < minDiff) {
+            minDiff = diff;
+            nearestExpiry = expiry;
+          }
+        }
+        usedExpiry = nearestExpiry;
+        console.log(`⚠️ Requested expiry ${expiryDateNSE} not available, using nearest: ${nearestExpiry}`);
+      }
+      
+      // Filter records to only include the selected expiry
+      if (usedExpiry && data?.records?.data) {
+        const originalCount = data.records.data.length;
+        filteredData = {
+          ...data,
+          records: {
+            ...data.records,
+            data: data.records.data.filter((record: any) => record.expiryDate === usedExpiry)
+          }
+        };
+        console.log(`Filtered records: ${filteredData.records.data.length} of ${originalCount} for expiry ${usedExpiry}`);
+      }
+    } else if (availableExpiries.length > 0) {
+      usedExpiry = availableExpiries[0]; // Default to nearest expiry
+      console.log(`Using default nearest expiry: ${usedExpiry}`);
+    }
+    
     // Extract marketLot from first record
-    const records = data?.records?.data || [];
+    const records = filteredData?.records?.data || [];
     let marketLot: number | null = null;
     
     if (records.length > 0 && records[0].marketLot) {
@@ -224,7 +288,7 @@ async function fetchNSEOptionChain(symbol: string, type: 'index' | 'share'): Pro
       console.log(`✓ NSE API marketLot extracted: ${marketLot} units`);
     }
     
-    return { data, marketLot };
+    return { data: filteredData, marketLot, availableExpiries, usedExpiry };
   } catch (error) {
     console.error('❌ CRITICAL: NSE API CALL FAILED:', error);
     console.error('⚠️ Possible causes:');
@@ -233,7 +297,7 @@ async function fetchNSEOptionChain(symbol: string, type: 'index' | 'share'): Pro
     console.error('  - Incorrect symbol format');
     console.error('  - Network timeout');
     console.error('📊 System will fall back to AI_ESTIMATED mode with approximate premiums');
-    return { data: null, marketLot: null };
+    return { data: null, marketLot: null, availableExpiries: [], usedExpiry: null };
   }
 }
 
@@ -1196,6 +1260,18 @@ Return this JSON format:
       }
     }
 
+    // Create NSE format expiry date (DD-MMM-YYYY)
+    // Parse the expiryDateISO (YYYY-MM-DD) to create NSE format
+    const expiryParts = expiryDateISO.split('-');
+    const expiryDateObj = new Date(Date.UTC(
+      parseInt(expiryParts[0]),
+      parseInt(expiryParts[1]) - 1,
+      parseInt(expiryParts[2])
+    ));
+    const expiryDateNSE = formatExpiryForNSE(expiryDateObj);
+    console.log(`Calculated expiry: ${expiryDate} (NSE format: ${expiryDateNSE}, Days to expiry: ${daysToExpiry})`);
+
+
     // Determine lot size with multi-source priority
     let lotSize = 500; // Default fallback
     let nseSymbol = '';
@@ -1231,8 +1307,13 @@ Return this JSON format:
     // Use mapped NSE symbol for indices, original symbol for stocks
     const nseSymbolToFetch = nseSymbol || symbol;
     
-    console.log(`Fetching real option chain data from NSE for ${nseSymbolToFetch}`);
-    const nseResult = await fetchNSEOptionChain(nseSymbolToFetch, type);
+    console.log(`Fetching real option chain data from NSE for ${nseSymbolToFetch} (expiry: ${expiryDateNSE})`);
+    const nseResult = await fetchNSEOptionChain(nseSymbolToFetch, type, expiryDateNSE);
+    
+    // Log which expiry was actually used (may differ if requested wasn't available)
+    if (nseResult.usedExpiry && nseResult.usedExpiry !== expiryDateNSE) {
+      console.log(`⚠️ NSE returned data for expiry ${nseResult.usedExpiry} instead of requested ${expiryDateNSE}`);
+    }
     
     // Initialize IV variables
     let realCallIV: number | null = null;
