@@ -1,7 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { TrendingUp, TrendingDown, Minus, AlertTriangle, AlertCircle, Target, Shield, Activity, Brain, Calendar, Clock } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, AlertTriangle, AlertCircle, Target, Shield, Activity, Brain, Calendar, Clock, BarChart3, Layers, Hash } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 interface OptionsPrediction {
@@ -61,6 +61,28 @@ interface OptionsPrediction {
     bidPrice: number;
     askPrice: number;
   };
+  // Options Flow Analysis (PCR & Max Pain)
+  optionsFlow?: {
+    pcr: number | null;
+    pcrOI: number | null;
+    pcrInterpretation: string;
+    maxPain: number | null;
+    maxPainInterpretation: string;
+  };
+  // Fibonacci Levels
+  fibonacciLevels?: { [key: string]: number };
+  fibonacciInterpretation?: string;
+  // Pivot Points
+  pivotPoints?: {
+    pivot: number;
+    r1: number;
+    r2: number;
+    r3: number;
+    s1: number;
+    s2: number;
+    s3: number;
+    interpretation: string;
+  };
 }
 
 interface OptionsPredictionDisplayProps {
@@ -99,6 +121,27 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData, dataSour
     if (risk === 'Low') return "bg-green-500/10 text-green-500 border-green-500/20";
     if (risk === 'Medium') return "bg-yellow-500/10 text-yellow-500 border-yellow-500/20";
     return "bg-red-500/10 text-red-500 border-red-500/20";
+  };
+
+  const getPCRColor = (pcr: number | null) => {
+    if (!pcr) return "text-muted-foreground";
+    if (pcr > 1.2) return "text-green-500";
+    if (pcr < 0.8) return "text-red-500";
+    return "text-yellow-500";
+  };
+
+  const getPCRSentiment = (pcr: number | null) => {
+    if (!pcr) return "N/A";
+    if (pcr > 1.2) return "Bullish";
+    if (pcr < 0.8) return "Bearish";
+    return "Neutral";
+  };
+
+  const getPCRBgColor = (pcr: number | null) => {
+    if (!pcr) return "bg-muted/50";
+    if (pcr > 1.2) return "bg-green-500/10 border-green-500/20";
+    if (pcr < 0.8) return "bg-red-500/10 border-red-500/20";
+    return "bg-yellow-500/10 border-yellow-500/20";
   };
 
   const chartData = historicalData.slice(-30).map((item) => ({
@@ -515,6 +558,171 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData, dataSour
             </div>
           </div>
         </Card>
+
+        {/* Options Flow Analysis Section */}
+        {(prediction.optionsFlow || prediction.fibonacciLevels || prediction.pivotPoints) && (
+          <Card className="p-6 bg-accent/50 mb-8">
+            <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-primary" />
+              Options Flow Analysis
+            </h3>
+            
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* PCR & Max Pain Section */}
+              {prediction.optionsFlow && (
+                <div className="space-y-4">
+                  <h4 className="font-semibold flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-primary" />
+                    Put-Call Ratio & Max Pain
+                  </h4>
+                  
+                  {/* PCR Display */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className={`p-3 rounded-lg border ${getPCRBgColor(prediction.optionsFlow.pcr)}`}>
+                      <p className="text-xs text-muted-foreground mb-1">PCR (Volume)</p>
+                      <p className={`text-xl font-bold ${getPCRColor(prediction.optionsFlow.pcr)}`}>
+                        {prediction.optionsFlow.pcr?.toFixed(2) || 'N/A'}
+                      </p>
+                      <Badge variant="outline" className={`mt-1 text-xs ${getPCRColor(prediction.optionsFlow.pcr)}`}>
+                        {getPCRSentiment(prediction.optionsFlow.pcr)}
+                      </Badge>
+                    </div>
+                    <div className={`p-3 rounded-lg border ${getPCRBgColor(prediction.optionsFlow.pcrOI)}`}>
+                      <p className="text-xs text-muted-foreground mb-1">PCR (OI)</p>
+                      <p className={`text-xl font-bold ${getPCRColor(prediction.optionsFlow.pcrOI)}`}>
+                        {prediction.optionsFlow.pcrOI?.toFixed(2) || 'N/A'}
+                      </p>
+                      <Badge variant="outline" className={`mt-1 text-xs ${getPCRColor(prediction.optionsFlow.pcrOI)}`}>
+                        {getPCRSentiment(prediction.optionsFlow.pcrOI)}
+                      </Badge>
+                    </div>
+                  </div>
+                  
+                  {prediction.optionsFlow.pcrInterpretation && (
+                    <p className="text-xs text-muted-foreground bg-background/50 p-2 rounded">
+                      {prediction.optionsFlow.pcrInterpretation}
+                    </p>
+                  )}
+                  
+                  {/* Max Pain Display */}
+                  {prediction.optionsFlow.maxPain && (
+                    <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold flex items-center gap-2">
+                          <Target className="h-4 w-4 text-primary" />
+                          Max Pain Strike
+                        </span>
+                        <span className="text-2xl font-bold text-primary">
+                          ₹{prediction.optionsFlow.maxPain.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                      {prediction.optionsFlow.maxPainInterpretation && (
+                        <p className="text-xs text-muted-foreground">
+                          {prediction.optionsFlow.maxPainInterpretation}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {/* Fibonacci Levels Section */}
+              {prediction.fibonacciLevels && (
+                <div className="space-y-4">
+                  <h4 className="font-semibold flex items-center gap-2">
+                    <Hash className="h-4 w-4 text-primary" />
+                    Fibonacci Retracement
+                  </h4>
+                  
+                  <div className="space-y-2">
+                    {Object.entries(prediction.fibonacciLevels)
+                      .sort(([a], [b]) => parseFloat(b.replace('%', '')) - parseFloat(a.replace('%', '')))
+                      .map(([level, price]) => (
+                        <div 
+                          key={level} 
+                          className={`flex justify-between items-center px-3 py-2 rounded border ${
+                            level === '50%' 
+                              ? 'bg-yellow-500/10 border-yellow-500/20' 
+                              : level === '61.8%' || level === '38.2%'
+                              ? 'bg-primary/10 border-primary/20'
+                              : 'bg-background/50 border-border/50'
+                          }`}
+                        >
+                          <span className={`text-sm font-medium ${
+                            level === '50%' ? 'text-yellow-500' : 
+                            level === '61.8%' || level === '38.2%' ? 'text-primary' : 
+                            'text-muted-foreground'
+                          }`}>
+                            {level}
+                          </span>
+                          <span className="font-semibold">₹{price.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                        </div>
+                      ))
+                    }
+                  </div>
+                  
+                  {prediction.fibonacciInterpretation && (
+                    <p className="text-xs text-muted-foreground bg-background/50 p-2 rounded">
+                      {prediction.fibonacciInterpretation}
+                    </p>
+                  )}
+                </div>
+              )}
+              
+              {/* Pivot Points Section */}
+              {prediction.pivotPoints && (
+                <div className="space-y-4 md:col-span-2">
+                  <h4 className="font-semibold flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-primary" />
+                    Daily Pivot Points
+                  </h4>
+                  
+                  <div className="grid grid-cols-7 gap-2 text-center">
+                    {/* Resistance Levels */}
+                    <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-1">R3</p>
+                      <p className="font-bold text-green-500">₹{prediction.pivotPoints.r3.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+                    </div>
+                    <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-1">R2</p>
+                      <p className="font-bold text-green-500">₹{prediction.pivotPoints.r2.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+                    </div>
+                    <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-1">R1</p>
+                      <p className="font-bold text-green-500">₹{prediction.pivotPoints.r1.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+                    </div>
+                    
+                    {/* Pivot Point */}
+                    <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-1">PP</p>
+                      <p className="font-bold text-primary">₹{prediction.pivotPoints.pivot.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+                    </div>
+                    
+                    {/* Support Levels */}
+                    <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-1">S1</p>
+                      <p className="font-bold text-red-500">₹{prediction.pivotPoints.s1.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+                    </div>
+                    <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-1">S2</p>
+                      <p className="font-bold text-red-500">₹{prediction.pivotPoints.s2.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+                    </div>
+                    <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-1">S3</p>
+                      <p className="font-bold text-red-500">₹{prediction.pivotPoints.s3.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+                    </div>
+                  </div>
+                  
+                  {prediction.pivotPoints.interpretation && (
+                    <p className="text-xs text-muted-foreground bg-background/50 p-2 rounded">
+                      {prediction.pivotPoints.interpretation}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
 
         <Card className="p-6 bg-accent/50 mb-8">
           <h3 className="text-xl font-semibold mb-4">30-Day Price History</h3>
