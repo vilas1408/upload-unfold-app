@@ -454,12 +454,69 @@ function calculateMaxPain(optionChainData: any): { maxPain: number | null, inter
   }
 }
 
-// Extract ATM premium and IV from NSE option chain data
-function extractATMPremiumAndIV(optionChainData: any, currentPrice: number, optionType: 'CE' | 'PE'): { premium: number | null, iv: number | null } {
+// Extract premium for a SPECIFIC strike from NSE option chain data
+function extractPremiumForStrike(
+  optionChainData: any, 
+  strikePrice: number, 
+  optionType: 'CE' | 'PE'
+): { premium: number | null, iv: number | null } {
   try {
     const records = optionChainData?.records?.data || [];
     
-    if (records.length === 0) return { premium: null, iv: null };
+    if (records.length === 0) {
+      console.warn(`No records in option chain data`);
+      return { premium: null, iv: null };
+    }
+    
+    // Find the exact strike in option chain
+    const strikeData = records.find((record: any) => record.strikePrice === strikePrice);
+    
+    if (!strikeData) {
+      console.warn(`Strike ${strikePrice} not found in option chain. Available strikes: ${records.slice(0, 5).map((r: any) => r.strikePrice).join(', ')}...`);
+      return { premium: null, iv: null };
+    }
+    
+    const leg = strikeData[optionType];
+    if (!leg) {
+      console.warn(`${optionType} data not found for strike ${strikePrice}`);
+      return { premium: null, iv: null };
+    }
+    
+    const premium = leg.lastPrice ?? leg.ltp ?? null;
+    const iv = leg.impliedVolatility ?? null;
+    
+    console.log(`✓ Premium for ${optionType} at strike ${strikePrice}: ₹${premium}, IV: ${iv}%`);
+    return { premium, iv };
+  } catch (error) {
+    console.error('Error extracting premium for strike:', error);
+    return { premium: null, iv: null };
+  }
+}
+
+// Get list of available strikes from option chain (nearest to current price)
+function getAvailableStrikes(optionChainData: any, currentPrice: number, count: number = 10): number[] {
+  try {
+    const records = optionChainData?.records?.data || [];
+    if (records.length === 0) return [];
+    
+    const strikes = records
+      .map((r: any) => r.strikePrice)
+      .filter((s: number) => typeof s === 'number')
+      .sort((a: number, b: number) => Math.abs(a - currentPrice) - Math.abs(b - currentPrice));
+    
+    return strikes.slice(0, count);
+  } catch (error) {
+    console.error('Error getting available strikes:', error);
+    return [];
+  }
+}
+
+// Extract ATM premium and IV from NSE option chain data
+function extractATMPremiumAndIV(optionChainData: any, currentPrice: number, optionType: 'CE' | 'PE'): { premium: number | null, iv: number | null, atmStrike: number } {
+  try {
+    const records = optionChainData?.records?.data || [];
+    
+    if (records.length === 0) return { premium: null, iv: null, atmStrike: 0 };
     
     // Find ATM strike - different intervals for indices vs stocks
     let strikeInterval: number;
@@ -488,7 +545,7 @@ function extractATMPremiumAndIV(optionChainData: any, currentPrice: number, opti
       const nearestLeg = optionType === 'CE' ? nearestData.CE : nearestData.PE;
       const premium = nearestLeg?.ltp ?? nearestLeg?.lastPrice ?? null;
       const iv = nearestLeg?.impliedVolatility ?? null;
-      return { premium, iv };
+      return { premium, iv, atmStrike };
     }
     
     // Log NSE data for debugging
@@ -505,10 +562,10 @@ function extractATMPremiumAndIV(optionChainData: any, currentPrice: number, opti
     const iv = leg?.impliedVolatility ?? null;
     
     console.log(`${optionType} ATM at strike ${atmStrike}: Premium ₹${premium}, IV ${iv}%`);
-    return { premium, iv };
+    return { premium, iv, atmStrike };
   } catch (error) {
     console.error('Error extracting ATM data:', error);
-    return { premium: null, iv: null };
+    return { premium: null, iv: null, atmStrike: 0 };
   }
 }
 
@@ -1331,10 +1388,13 @@ Return this JSON format:
       realPutIV = putData.iv;
       nseMarketLot = nseResult.marketLot;
       
+      // Store ATM strike for later comparison with AI's recommended strike
+      const atmStrikeFromNSE = callData.atmStrike || putData.atmStrike || 0;
+      
       if (realCallPremium || realPutPremium) {
         dataSource = 'NSE_LIVE';
         console.log(
-          `Successfully fetched NSE data - Call: ₹${realCallPremium ?? 'N/A'} (IV: ${realCallIV ?? 'N/A'}%), ` +
+          `Successfully fetched NSE data - ATM Strike: ${atmStrikeFromNSE}, Call: ₹${realCallPremium ?? 'N/A'} (IV: ${realCallIV ?? 'N/A'}%), ` +
           `Put: ₹${realPutPremium ?? 'N/A'} (IV: ${realPutIV ?? 'N/A'}%)`
         );
       }
@@ -1810,19 +1870,58 @@ Provide realistic options strategy:
     prediction.technicalWeight = Math.round(technicalScore * technicalWeight);
     prediction.volumeWeight = Math.round(volumeScore * volumeWeight);
     
-    // Override with real NSE premium if available
-    if (dataSource === 'NSE_LIVE' && realCallPremium && prediction.optionType === 'CALL') {
-      prediction.premium = prediction.premium || {} as any;
-      prediction.premium.buyLeg = realCallPremium;
-      prediction.premium.netCost = realCallPremium;
-      prediction.totalInvestment = realCallPremium * prediction.lotSize;
-      console.log(`Overriding entry premium with REAL NSE call premium: ₹${realCallPremium}`);
-    } else if (dataSource === 'NSE_LIVE' && realPutPremium && prediction.optionType === 'PUT') {
-      prediction.premium = prediction.premium || {} as any;
-      prediction.premium.buyLeg = realPutPremium;
-      prediction.premium.netCost = realPutPremium;
-      prediction.totalInvestment = realPutPremium * prediction.lotSize;
-      console.log(`Overriding entry premium with REAL NSE put premium: ₹${realPutPremium}`);
+    // Override with real NSE premium for THE AI's RECOMMENDED STRIKE (not just ATM)
+    // Get ATM strike for comparison logging
+    const atmStrikeForLog = nseResult.data ? extractATMPremiumAndIV(nseResult.data, analysis.current, 'CE').atmStrike : 0;
+    
+    if (dataSource === 'NSE_LIVE' && nseResult.data && prediction.strikePrice) {
+      const optionTypeCode = prediction.optionType === 'CALL' ? 'CE' : 'PE';
+      const { premium: strikePremium, iv: strikeIV } = extractPremiumForStrike(
+        nseResult.data, 
+        prediction.strikePrice, 
+        optionTypeCode
+      );
+      
+      if (strikePremium) {
+        prediction.premium = prediction.premium || {} as any;
+        prediction.premium.buyLeg = strikePremium;
+        prediction.premium.netCost = strikePremium;
+        prediction.totalInvestment = strikePremium * prediction.lotSize;
+        
+        console.log(`
+📊 PREMIUM RESOLUTION:
+  ATM Strike: ${atmStrikeForLog} ${prediction.strikePrice === atmStrikeForLog ? '(same as recommended)' : ''}
+  ATM Premium: ₹${prediction.optionType === 'CALL' ? realCallPremium : realPutPremium}
+  AI Recommended Strike: ${prediction.strikePrice}
+  Premium for Recommended Strike: ₹${strikePremium}
+  ✓ Using premium for AI's recommended strike
+`);
+      } else {
+        // Fallback to ATM premium if specific strike not found
+        const atmPremium = prediction.optionType === 'CALL' ? realCallPremium : realPutPremium;
+        if (atmPremium) {
+          prediction.premium = prediction.premium || {} as any;
+          prediction.premium.buyLeg = atmPremium;
+          prediction.premium.netCost = atmPremium;
+          prediction.totalInvestment = atmPremium * prediction.lotSize;
+          console.warn(`⚠️ Strike ${prediction.strikePrice} premium not found, falling back to ATM premium: ₹${atmPremium}`);
+        }
+      }
+    } else if (dataSource === 'NSE_LIVE') {
+      // Legacy fallback if no specific strike lookup
+      if (realCallPremium && prediction.optionType === 'CALL') {
+        prediction.premium = prediction.premium || {} as any;
+        prediction.premium.buyLeg = realCallPremium;
+        prediction.premium.netCost = realCallPremium;
+        prediction.totalInvestment = realCallPremium * prediction.lotSize;
+        console.log(`Overriding entry premium with REAL NSE call premium: ₹${realCallPremium}`);
+      } else if (realPutPremium && prediction.optionType === 'PUT') {
+        prediction.premium = prediction.premium || {} as any;
+        prediction.premium.buyLeg = realPutPremium;
+        prediction.premium.netCost = realPutPremium;
+        prediction.totalInvestment = realPutPremium * prediction.lotSize;
+        console.log(`Overriding entry premium with REAL NSE put premium: ₹${realPutPremium}`);
+      }
     }
     
     // Log prediction decision flow
