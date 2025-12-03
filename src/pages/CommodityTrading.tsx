@@ -20,7 +20,8 @@ const CommodityTrading = () => {
   const [prediction, setPrediction] = useState<any | null>(null);
   const [historicalData, setHistoricalData] = useState<any[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [dataSource, setDataSource] = useState<'MCX_LIVE' | 'AI_ESTIMATED' | null>(null);
+  const [dataSource, setDataSource] = useState<'MCX_LIVE' | 'YAHOO_FINANCE' | 'AI_ESTIMATED' | null>(null);
+  const [dataTimestamp, setDataTimestamp] = useState<string | null>(null);
   const [userPlan, setUserPlan] = useState<{
     plan: string;
     daily_limit: number;
@@ -98,10 +99,11 @@ const CommodityTrading = () => {
         setPrediction(data.prediction);
         setHistoricalData(data.historicalData);
         setDataSource(data.dataSource || 'AI_ESTIMATED');
+        setDataTimestamp(data.dataTimestamp || null);
         
         toast({
           title: "Commodity Prediction Generated",
-          description: `${data.dataSource === 'MCX_LIVE' ? '🟢 LIVE MCX DATA:' : '🔮 AI Estimate:'} Analysis for ${name} is ready!`,
+          description: `${data.dataSource === 'MCX_LIVE' ? '🟢 LIVE MCX DATA:' : data.dataSource === 'YAHOO_FINANCE' ? '🌐 Yahoo Finance:' : '🔮 AI Estimate:'} Analysis for ${name} is ready!`,
         });
 
         setTimeout(() => {
@@ -191,6 +193,12 @@ const CommodityTrading = () => {
                   LIVE MCX DATA: Real-time prices from Multi Commodity Exchange
                 </p>
               </div>
+            ) : dataSource === 'YAHOO_FINANCE' ? (
+              <div className="text-center mb-4 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                <p className="text-blue-400 font-semibold">
+                  🌐 YAHOO FINANCE: International prices converted to INR
+                </p>
+              </div>
             ) : (
               <div className="text-center mb-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                 <p className="text-yellow-400 font-semibold">
@@ -203,6 +211,7 @@ const CommodityTrading = () => {
               prediction={prediction}
               historicalData={historicalData}
               dataSource={dataSource}
+              dataTimestamp={dataTimestamp || undefined}
             />
           </>
         )}
