@@ -108,3 +108,6 @@ verify_jwt = false
 
 [functions.fetch-mcx-spot-price]
 verify_jwt = false
+
+[functions.predict-commodity]
+verify_jwt = false
