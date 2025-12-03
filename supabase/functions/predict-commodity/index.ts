@@ -7,15 +7,161 @@ const corsHeaders = {
 };
 
 // Commodity configuration
-const COMMODITY_CONFIG: { [key: string]: { lotSize: number; unit: string; tickSize: number } } = {
-  'GOLD': { lotSize: 1000, unit: 'grams', tickSize: 1 },
-  'GOLDM': { lotSize: 100, unit: 'grams', tickSize: 1 },
-  'SILVER': { lotSize: 30000, unit: 'grams', tickSize: 1 },
-  'SILVERM': { lotSize: 5000, unit: 'grams', tickSize: 1 },
-  'CRUDEOIL': { lotSize: 100, unit: 'barrels', tickSize: 1 },
-  'NATURALGAS': { lotSize: 1250, unit: 'mmBtu', tickSize: 0.1 },
-  'COPPER': { lotSize: 2500, unit: 'kg', tickSize: 0.05 },
+const COMMODITY_CONFIG: { [key: string]: { lotSize: number; unit: string; tickSize: number; ivRange: [number, number] } } = {
+  'GOLD': { lotSize: 100, unit: 'grams', tickSize: 1, ivRange: [0.12, 0.20] },
+  'GOLDM': { lotSize: 10, unit: 'grams', tickSize: 1, ivRange: [0.12, 0.20] },
+  'SILVER': { lotSize: 30, unit: 'kg', tickSize: 1, ivRange: [0.18, 0.30] },
+  'SILVERM': { lotSize: 5, unit: 'kg', tickSize: 1, ivRange: [0.18, 0.30] },
+  'CRUDEOIL': { lotSize: 100, unit: 'barrels', tickSize: 1, ivRange: [0.25, 0.45] },
+  'NATURALGAS': { lotSize: 1250, unit: 'mmBtu', tickSize: 0.1, ivRange: [0.35, 0.60] },
+  'COPPER': { lotSize: 2500, unit: 'kg', tickSize: 0.05, ivRange: [0.15, 0.25] },
 };
+
+// MCX 2025-2026 Expiry Calendar (known dates)
+const MCX_EXPIRY_CALENDAR: { [commodity: string]: { [monthYear: string]: string } } = {
+  'CRUDEOIL': {
+    'DEC2025': '2025-12-17',  // New rule: Options expire ~7 business days before futures
+    'JAN2026': '2026-01-15',
+    'FEB2026': '2026-02-17',
+  },
+  'GOLD': {
+    'DEC2025': '2025-12-05',
+    'FEB2026': '2026-02-05',
+    'APR2026': '2026-04-03',
+  },
+  'SILVER': {
+    'DEC2025': '2025-12-05',
+    'MAR2026': '2026-03-05',
+  },
+  'NATURALGAS': {
+    'DEC2025': '2025-12-24',
+    'JAN2026': '2026-01-27',
+  },
+  'COPPER': {
+    'DEC2025': '2025-12-30',
+    'JAN2026': '2026-01-30',
+  },
+};
+
+// Get MCX expiry date based on commodity type
+function getMCXExpiry(symbol: string): { expiryDate: Date; expiryStr: string; daysToExpiry: number } {
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+  
+  // Determine contract month (current if before 15th, next if after)
+  let contractMonth = currentMonth;
+  let contractYear = currentYear;
+  
+  if (now.getDate() > 15) {
+    contractMonth = (currentMonth + 1) % 12;
+    if (contractMonth === 0) contractYear++;
+  }
+  
+  const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  const monthKey = `${monthNames[contractMonth]}${contractYear}`;
+  
+  // Check calendar first
+  const baseSymbol = symbol.replace(/M$/, '').replace(/MIC$/, ''); // Remove mini/micro suffix
+  if (MCX_EXPIRY_CALENDAR[baseSymbol]?.[monthKey]) {
+    const calendarDate = new Date(MCX_EXPIRY_CALENDAR[baseSymbol][monthKey]);
+    const daysToExpiry = Math.ceil((calendarDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    return {
+      expiryDate: calendarDate,
+      expiryStr: calendarDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+      daysToExpiry: Math.max(1, daysToExpiry),
+    };
+  }
+  
+  // Calculate based on commodity-specific rules
+  let expiryDate: Date;
+  
+  if (symbol.includes('CRUDE')) {
+    // Crude Oil: Options expire 7 business days before futures (futures ~17-19th)
+    // From Dec 2025: New rule applies
+    const futuresExpiry = new Date(contractYear, contractMonth, 18);
+    expiryDate = subtractBusinessDays(futuresExpiry, 7);
+  } else if (symbol.includes('GOLD') || symbol.includes('SILVER')) {
+    // Gold/Silver: 5th of expiry month (or previous business day)
+    expiryDate = new Date(contractYear, contractMonth, 5);
+    // Adjust if weekend
+    while (expiryDate.getDay() === 0 || expiryDate.getDay() === 6) {
+      expiryDate.setDate(expiryDate.getDate() - 1);
+    }
+  } else if (symbol.includes('NATURAL')) {
+    // Natural Gas: Around 24th-27th of month
+    expiryDate = new Date(contractYear, contractMonth, 25);
+    while (expiryDate.getDay() === 0 || expiryDate.getDay() === 6) {
+      expiryDate.setDate(expiryDate.getDate() - 1);
+    }
+  } else if (symbol.includes('COPPER')) {
+    // Copper: Last business day of month
+    expiryDate = new Date(contractYear, contractMonth + 1, 0);
+    while (expiryDate.getDay() === 0 || expiryDate.getDay() === 6) {
+      expiryDate.setDate(expiryDate.getDate() - 1);
+    }
+  } else {
+    // Default: Last business day
+    expiryDate = new Date(contractYear, contractMonth + 1, 0);
+    while (expiryDate.getDay() === 0 || expiryDate.getDay() === 6) {
+      expiryDate.setDate(expiryDate.getDate() - 1);
+    }
+  }
+  
+  const daysToExpiry = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  
+  return {
+    expiryDate,
+    expiryStr: expiryDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+    daysToExpiry: Math.max(1, daysToExpiry),
+  };
+}
+
+function subtractBusinessDays(date: Date, days: number): Date {
+  const result = new Date(date);
+  let remaining = days;
+  while (remaining > 0) {
+    result.setDate(result.getDate() - 1);
+    if (result.getDay() !== 0 && result.getDay() !== 6) {
+      remaining--;
+    }
+  }
+  return result;
+}
+
+// Improved premium estimation using simplified Black-Scholes
+function estimatePremium(
+  spotPrice: number, 
+  strikePrice: number, 
+  daysToExpiry: number, 
+  ivRange: [number, number], 
+  isCall: boolean
+): { premium: number; iv: number } {
+  const timeToExpiry = daysToExpiry / 365;
+  const iv = (ivRange[0] + ivRange[1]) / 2; // Use mid-range IV
+  
+  // Intrinsic value
+  const intrinsicValue = isCall 
+    ? Math.max(0, spotPrice - strikePrice) 
+    : Math.max(0, strikePrice - spotPrice);
+  
+  // Time value using simplified Black-Scholes approximation
+  // Time value ≈ 0.4 * S * σ * √T (at-the-money approximation)
+  const timeValue = 0.4 * spotPrice * iv * Math.sqrt(timeToExpiry);
+  
+  // Adjust time value based on moneyness
+  const moneyness = spotPrice / strikePrice;
+  const moneynessAdjustment = isCall
+    ? (moneyness > 1 ? 1.1 : moneyness < 0.95 ? 0.7 : 1)
+    : (moneyness < 1 ? 1.1 : moneyness > 1.05 ? 0.7 : 1);
+  
+  const premium = intrinsicValue + (timeValue * moneynessAdjustment);
+  
+  return {
+    premium: Math.max(premium, spotPrice * 0.005), // Minimum 0.5% of spot
+    iv: iv * 100,
+  };
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -74,17 +220,18 @@ serve(async (req) => {
 
     // Fetch MCX spot price
     let spotData: any = null;
-    let dataSource: 'MCX_LIVE' | 'AI_ESTIMATED' = 'AI_ESTIMATED';
+    let dataSource: 'MCX_LIVE' | 'YAHOO_FINANCE' | 'AI_ESTIMATED' = 'AI_ESTIMATED';
     
     try {
       const spotResponse = await supabase.functions.invoke('fetch-mcx-spot-price', {
         body: { symbol }
       });
       
-      if (spotResponse.data?.success) {
-        spotData = spotResponse.data;
-        dataSource = spotResponse.data.source === 'mcx' ? 'MCX_LIVE' : 'AI_ESTIMATED';
-        console.log(`Got spot price for ${symbol}: ₹${spotData.spotPrice}`);
+      if (spotResponse.data?.success && spotResponse.data?.data) {
+        spotData = spotResponse.data.data;
+        dataSource = spotData.source === 'mcx' ? 'MCX_LIVE' : 
+                     spotData.source === 'yahoo' ? 'YAHOO_FINANCE' : 'AI_ESTIMATED';
+        console.log(`Got spot price for ${symbol}: ₹${spotData.spotPrice} (source: ${spotData.source})`);
       }
     } catch (error) {
       console.error('Error fetching spot price:', error);
@@ -106,12 +253,16 @@ serve(async (req) => {
     }
 
     // Get commodity config
-    const config = COMMODITY_CONFIG[symbol] || { lotSize: 100, unit: 'units', tickSize: 1 };
+    const config = COMMODITY_CONFIG[symbol] || { lotSize: 100, unit: 'units', tickSize: 1, ivRange: [0.20, 0.35] as [number, number] };
     
     // Calculate spot price (from data or estimate)
     const spotPrice = spotData?.spotPrice || estimateSpotPrice(symbol);
     const internationalPrice = spotData?.internationalPrice || null;
-    const usdInr = spotData?.usdInr || 83.50;
+    const usdInr = spotData?.usdInrRate || spotData?.usdInr || 83.50;
+
+    // Get expiry date
+    const expiryInfo = getMCXExpiry(symbol);
+    console.log(`Expiry for ${symbol}: ${expiryInfo.expiryStr} (${expiryInfo.daysToExpiry} days)`);
 
     // Generate historical data (simplified)
     const historicalData = generateHistoricalData(spotPrice, 60);
@@ -128,7 +279,9 @@ serve(async (req) => {
       config,
       internationalPrice,
       usdInr,
-      optionChainData
+      optionChainData,
+      expiryInfo,
+      dataSource
     );
 
     // Track prediction
@@ -145,6 +298,7 @@ serve(async (req) => {
         predicted_strategy: prediction.strategy,
         prediction_json: prediction,
         technical_score: prediction.technicalScore,
+        expiry_date: expiryInfo.expiryDate.toISOString().split('T')[0],
       });
     }
 
@@ -153,6 +307,7 @@ serve(async (req) => {
       prediction,
       historicalData,
       dataSource,
+      dataTimestamp: spotData?.timestamp || new Date().toISOString(),
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -172,13 +327,13 @@ serve(async (req) => {
 function estimateSpotPrice(symbol: string): number {
   // Estimated spot prices as of late 2025
   const estimates: { [key: string]: number } = {
-    'GOLD': 77500,
-    'GOLDM': 77500,
-    'SILVER': 92000,
-    'SILVERM': 92000,
-    'CRUDEOIL': 6200,
-    'NATURALGAS': 280,
-    'COPPER': 780,
+    'GOLD': 78500,
+    'GOLDM': 78500,
+    'SILVER': 95000,
+    'SILVERM': 95000,
+    'CRUDEOIL': 6800,
+    'NATURALGAS': 230,
+    'COPPER': 830,
   };
   return estimates[symbol] || 10000;
 }
@@ -246,7 +401,9 @@ async function generateAIPrediction(
   config: any,
   internationalPrice: number | null,
   usdInr: number,
-  optionChainData: any
+  optionChainData: any,
+  expiryInfo: { expiryDate: Date; expiryStr: string; daysToExpiry: number },
+  dataSource: string
 ): Promise<any> {
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
   
@@ -256,23 +413,20 @@ async function generateAIPrediction(
   // Determine option type based on technicals
   const optionType = technicals.trend === 'Bullish' || technicals.rsi < 40 ? 'CALL' : 'PUT';
   
-  // Calculate premium estimate
-  const estimatedPremium = spotPrice * 0.025; // ~2.5% of spot
-  const targetPremium = estimatedPremium * 1.4;
-  const stopLossPremium = estimatedPremium * 0.7;
+  // Calculate premium using improved estimation
+  const ivRange = config.ivRange || [0.20, 0.35];
+  const premiumData = estimatePremium(spotPrice, atmStrike, expiryInfo.daysToExpiry, ivRange, optionType === 'CALL');
+  const entryPremium = premiumData.premium;
+  const targetPremium = entryPremium * 1.4;
+  const stopLossPremium = entryPremium * 0.7;
   
-  // Calculate expiry (next month end)
-  const now = new Date();
-  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const expiryDate = nextMonth.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-  
-  // Calculate Greeks (simplified)
-  const daysToExpiry = Math.ceil((nextMonth.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  const volatility = 0.25;
-  const delta = optionType === 'CALL' ? 0.55 : -0.45;
-  const gamma = 0.002;
-  const theta = -estimatedPremium * 0.03;
-  const vega = estimatedPremium * 0.15;
+  // Calculate Greeks
+  const timeToExpiry = expiryInfo.daysToExpiry / 365;
+  const iv = premiumData.iv / 100;
+  const delta = optionType === 'CALL' ? 0.5 + (0.15 * (spotPrice > atmStrike ? 1 : -1)) : -(0.5 + (0.15 * (spotPrice < atmStrike ? 1 : -1)));
+  const gamma = (0.4 / (spotPrice * iv * Math.sqrt(timeToExpiry))) * 0.01;
+  const theta = -(spotPrice * iv * 0.4) / (2 * Math.sqrt(timeToExpiry) * 365);
+  const vega = spotPrice * Math.sqrt(timeToExpiry) * 0.4 * 0.01;
   
   // Build AI prompt
   const prompt = `Analyze ${name} (${symbol}) for MCX options trading:
@@ -285,6 +439,10 @@ MARKET DATA:
 - Resistance: ₹${technicals.resistance.toFixed(2)}
 ${internationalPrice ? `- International Price: $${internationalPrice}` : ''}
 - USD/INR: ${usdInr}
+- Days to Expiry: ${expiryInfo.daysToExpiry}
+- Expiry Date: ${expiryInfo.expiryStr}
+- Estimated IV: ${premiumData.iv.toFixed(1)}%
+- Data Source: ${dataSource}
 
 Provide a brief (2-3 sentences) trading recommendation explaining why to go ${optionType} on ${symbol}.
 Focus on: trend alignment, global factors, and key risk.`;
@@ -323,9 +481,9 @@ Focus on: trend alignment, global factors, and key risk.`;
   }
 
   // Calculate risk metrics
-  const totalInvestment = Math.round(estimatedPremium * config.lotSize);
+  const totalInvestment = Math.round(entryPremium * config.lotSize);
   const maxLoss = totalInvestment;
-  const maxGain = Math.round((targetPremium - estimatedPremium) * config.lotSize);
+  const maxGain = Math.round((targetPremium - entryPremium) * config.lotSize);
   
   // Probability based on technicals
   let probability = 50;
@@ -343,6 +501,7 @@ Focus on: trend alignment, global factors, and key risk.`;
   if (symbol.includes('CRUDE')) {
     globalFactors.push('OPEC+ production decisions affect crude oil supply');
     globalFactors.push('Global demand outlook and inventory data are key drivers');
+    globalFactors.push('Note: MCX Crude options now expire 7 business days before futures (Dec 2025 onwards)');
   }
   if (symbol.includes('NATURAL')) {
     globalFactors.push('Weather patterns significantly impact natural gas demand');
@@ -353,22 +512,23 @@ Focus on: trend alignment, global factors, and key risk.`;
     strategy: optionType === 'CALL' ? 'Long Call' : 'Long Put',
     strikePrice: atmStrike,
     optionType,
-    expiryDate,
+    expiryDate: expiryInfo.expiryStr,
+    daysToExpiry: expiryInfo.daysToExpiry,
     lotSize: config.lotSize,
     targetPrice: optionType === 'CALL' ? spotPrice * 1.03 : spotPrice * 0.97,
     stopLoss: optionType === 'CALL' ? spotPrice * 0.98 : spotPrice * 1.02,
     entryPrice: spotPrice,
-    expectedReturn: ((targetPremium - estimatedPremium) / estimatedPremium) * 100,
+    expectedReturn: ((targetPremium - entryPremium) / entryPremium) * 100,
     probability: `${probability}%`,
     maxLoss,
     maxGain,
     totalInvestment,
     premium: {
-      buyLeg: Math.round(estimatedPremium),
+      buyLeg: Math.round(entryPremium),
       targetPremium: Math.round(targetPremium),
       stopLossPremium: Math.round(stopLossPremium),
     },
-    ivRank: Math.floor(Math.random() * 40) + 30,
+    ivRank: Math.round(premiumData.iv),
     greeks: {
       delta: Math.abs(delta),
       gamma,
@@ -377,7 +537,7 @@ Focus on: trend alignment, global factors, and key risk.`;
     },
     reasoning,
     riskLevel: probability >= 60 ? 'Medium' : 'High',
-    timeFrame: `${daysToExpiry} days to expiry`,
+    timeFrame: `${expiryInfo.daysToExpiry} days to expiry`,
     technicalScore: Math.round(probability * 0.9),
     internationalCorrelation: {
       comexGold: symbol.includes('GOLD') ? internationalPrice : undefined,
@@ -387,5 +547,10 @@ Focus on: trend alignment, global factors, and key risk.`;
       usdInr,
     },
     globalFactors,
+    dataQuality: {
+      source: dataSource,
+      isLive: dataSource === 'MCX_LIVE',
+      expirySource: MCX_EXPIRY_CALENDAR[symbol.replace(/M$/, '').replace(/MIC$/, '')]?.[`${['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'][expiryInfo.expiryDate.getMonth()]}${expiryInfo.expiryDate.getFullYear()}`] ? 'calendar' : 'calculated',
+    },
   };
 }

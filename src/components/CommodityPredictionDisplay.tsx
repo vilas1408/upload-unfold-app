@@ -46,12 +46,20 @@ interface CommodityPrediction {
 
 interface CommodityPredictionDisplayProps {
   commodity: { symbol: string; name: string };
-  prediction: CommodityPrediction;
+  prediction: CommodityPrediction & {
+    daysToExpiry?: number;
+    dataQuality?: {
+      source: string;
+      isLive: boolean;
+      expirySource: string;
+    };
+  };
   historicalData: any[];
-  dataSource?: 'MCX_LIVE' | 'AI_ESTIMATED';
+  dataSource?: 'MCX_LIVE' | 'YAHOO_FINANCE' | 'AI_ESTIMATED';
+  dataTimestamp?: string;
 }
 
-const CommodityPredictionDisplay = ({ commodity, prediction, historicalData, dataSource }: CommodityPredictionDisplayProps) => {
+const CommodityPredictionDisplay = ({ commodity, prediction, historicalData, dataSource, dataTimestamp }: CommodityPredictionDisplayProps) => {
   const getConfidenceColor = (confidence: string) => {
     const value = parseInt(confidence);
     if (value >= 70) return "text-green-500";
@@ -92,21 +100,35 @@ const CommodityPredictionDisplay = ({ commodity, prediction, historicalData, dat
                 </Badge>
                 {dataSource && (
                   <Badge 
-                    variant={dataSource === 'MCX_LIVE' ? 'default' : 'destructive'} 
-                    className={dataSource === 'MCX_LIVE' ? 'flex items-center gap-1 bg-green-600 hover:bg-green-700' : 'flex items-center gap-1 bg-amber-600 hover:bg-amber-700'}
+                    variant={dataSource === 'MCX_LIVE' ? 'default' : dataSource === 'YAHOO_FINANCE' ? 'secondary' : 'destructive'} 
+                    className={
+                      dataSource === 'MCX_LIVE' ? 'flex items-center gap-1 bg-green-600 hover:bg-green-700' : 
+                      dataSource === 'YAHOO_FINANCE' ? 'flex items-center gap-1 bg-blue-600 hover:bg-blue-700' :
+                      'flex items-center gap-1 bg-amber-600 hover:bg-amber-700'
+                    }
                   >
                     {dataSource === 'MCX_LIVE' ? (
                       <>
                         <Activity className="h-3 w-3" />
                         Live MCX Data
                       </>
+                    ) : dataSource === 'YAHOO_FINANCE' ? (
+                      <>
+                        <Globe className="h-3 w-3" />
+                        Yahoo Finance (Intl.)
+                      </>
                     ) : (
                       <>
                         <AlertTriangle className="h-3 w-3" />
-                        Estimated - MCX Unavailable
+                        AI Estimated
                       </>
                     )}
                   </Badge>
+                )}
+                {dataTimestamp && (
+                  <span className="text-xs text-muted-foreground">
+                    Updated: {new Date(dataTimestamp).toLocaleTimeString('en-IN')}
+                  </span>
                 )}
               </div>
             </div>
@@ -176,9 +198,12 @@ const CommodityPredictionDisplay = ({ commodity, prediction, historicalData, dat
                   <p className="text-lg font-bold">₹{prediction.strikePrice.toLocaleString('en-IN')}</p>
                 </div>
                 {prediction.expiryDate && (
-                  <div>
+                  <div className="col-span-2">
                     <p className="text-xs text-muted-foreground mb-1">Expiry</p>
                     <p className="text-sm font-semibold">{prediction.expiryDate}</p>
+                    {prediction.daysToExpiry && (
+                      <p className="text-xs text-muted-foreground">({prediction.daysToExpiry} days)</p>
+                    )}
                   </div>
                 )}
                 {prediction.lotSize && (
