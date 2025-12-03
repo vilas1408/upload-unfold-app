@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Index from "./pages/Index";
 import OptionsTrading from "./pages/OptionsTrading";
+import CommodityTrading from "./pages/CommodityTrading";
 import Auth from "./pages/Auth";
 import Admin from "./pages/Admin";
 import Backtesting from "./pages/Backtesting";
@@ -40,6 +41,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/options" element={<OptionsTrading />} />
+          <Route path="/commodities" element={<CommodityTrading />} />
           <Route path="/backtesting" element={<Backtesting />} />
           <Route path="/auth" element={<Auth />} />
           <Route 

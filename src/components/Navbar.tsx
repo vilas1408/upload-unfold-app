@@ -1,4 +1,4 @@
-import { TrendingUp, LogOut, Shield, Home, BarChart3, Menu, X } from "lucide-react";
+import { TrendingUp, LogOut, Shield, Home, BarChart3, Menu, X, Gem } from "lucide-react";
 import { Button } from "./ui/button";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
@@ -101,6 +101,17 @@ const Navbar = () => {
             Options Trading
           </Link>
           <Link 
+            to="/commodities" 
+            className={`flex items-center gap-2 transition-colors ${
+              isActive('/commodities') 
+                ? 'text-primary font-semibold' 
+                : 'text-foreground hover:text-primary'
+            }`}
+          >
+            <Gem className="h-4 w-4" />
+            Commodities
+          </Link>
+          <Link 
             to="/backtesting" 
             className={`flex items-center gap-2 transition-colors ${
               isActive('/backtesting') 
@@ -201,6 +212,18 @@ const Navbar = () => {
                 >
                   <TrendingUp className="h-5 w-5" />
                   Options Trading
+                </Link>
+                <Link 
+                  to="/commodities" 
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                    isActive('/commodities') 
+                      ? 'bg-primary text-primary-foreground font-semibold' 
+                      : 'text-foreground hover:bg-muted'
+                  }`}
+                >
+                  <Gem className="h-5 w-5" />
+                  Commodities
                 </Link>
                 <Link 
                   to="/backtesting" 
