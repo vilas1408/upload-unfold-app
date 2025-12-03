@@ -102,3 +102,9 @@ verify_jwt = false
 
 [functions.track-prediction]
 verify_jwt = false
+
+[functions.fetch-mcx-option-chain]
+verify_jwt = false
+
+[functions.fetch-mcx-spot-price]
+verify_jwt = false
