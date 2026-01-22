@@ -6,21 +6,21 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Commodity configuration
-const COMMODITY_CONFIG: { [key: string]: { lotSize: number; unit: string; tickSize: number; ivRange: [number, number] } } = {
-  'GOLD': { lotSize: 100, unit: 'grams', tickSize: 1, ivRange: [0.12, 0.20] },
-  'GOLDM': { lotSize: 10, unit: 'grams', tickSize: 1, ivRange: [0.12, 0.20] },
-  'SILVER': { lotSize: 30, unit: 'kg', tickSize: 1, ivRange: [0.18, 0.30] },
-  'SILVERM': { lotSize: 5, unit: 'kg', tickSize: 1, ivRange: [0.18, 0.30] },
-  'CRUDEOIL': { lotSize: 100, unit: 'barrels', tickSize: 1, ivRange: [0.25, 0.45] },
-  'NATURALGAS': { lotSize: 1250, unit: 'mmBtu', tickSize: 0.1, ivRange: [0.35, 0.60] },
-  'COPPER': { lotSize: 2500, unit: 'kg', tickSize: 0.05, ivRange: [0.15, 0.25] },
+// Commodity configuration with strike intervals
+const COMMODITY_CONFIG: { [key: string]: { lotSize: number; unit: string; tickSize: number; strikeInterval: number; ivRange: [number, number] } } = {
+  'GOLD': { lotSize: 100, unit: 'grams', tickSize: 1, strikeInterval: 100, ivRange: [0.12, 0.20] },
+  'GOLDM': { lotSize: 10, unit: 'grams', tickSize: 1, strikeInterval: 100, ivRange: [0.12, 0.20] },
+  'SILVER': { lotSize: 30, unit: 'kg', tickSize: 1, strikeInterval: 500, ivRange: [0.18, 0.30] },
+  'SILVERM': { lotSize: 5, unit: 'kg', tickSize: 1, strikeInterval: 500, ivRange: [0.18, 0.30] },
+  'CRUDEOIL': { lotSize: 100, unit: 'barrels', tickSize: 1, strikeInterval: 100, ivRange: [0.25, 0.45] },
+  'NATURALGAS': { lotSize: 1250, unit: 'mmBtu', tickSize: 0.1, strikeInterval: 5, ivRange: [0.35, 0.60] },
+  'COPPER': { lotSize: 2500, unit: 'kg', tickSize: 0.05, strikeInterval: 5, ivRange: [0.15, 0.25] },
 };
 
 // MCX 2025-2026 Expiry Calendar (known dates)
 const MCX_EXPIRY_CALENDAR: { [commodity: string]: { [monthYear: string]: string } } = {
   'CRUDEOIL': {
-    'DEC2025': '2025-12-17',  // New rule: Options expire ~7 business days before futures
+    'DEC2025': '2025-12-07',  // Corrected: Options expire 7 Dec 2025
     'JAN2026': '2026-01-15',
     'FEB2026': '2026-02-17',
   },
@@ -407,8 +407,9 @@ async function generateAIPrediction(
 ): Promise<any> {
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
   
-  // Calculate ATM strike (round to nearest tick)
-  const atmStrike = Math.round(spotPrice / config.tickSize) * config.tickSize;
+  // Calculate ATM strike (round to nearest strike interval)
+  const strikeInterval = config.strikeInterval || 100;
+  const atmStrike = Math.round(spotPrice / strikeInterval) * strikeInterval;
   
   // Determine option type based on technicals
   const optionType = technicals.trend === 'Bullish' || technicals.rsi < 40 ? 'CALL' : 'PUT';
