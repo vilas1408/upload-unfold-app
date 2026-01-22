@@ -215,12 +215,20 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData, dataSour
               <div className="grid grid-cols-2 gap-4">
                 <div className="text-center p-3 bg-card rounded-lg">
                   <p className="text-sm text-muted-foreground mb-1">ATM Call Premium</p>
-                  <p className="text-2xl font-bold text-green-500">₹{realPremiums.callPremium.toFixed(2)}</p>
+                  <p className="text-2xl font-bold text-green-500">
+                    {typeof realPremiums.callPremium === "number" && Number.isFinite(realPremiums.callPremium)
+                      ? `₹${realPremiums.callPremium.toFixed(2)}`
+                      : "—"}
+                  </p>
                   <p className="text-xs text-muted-foreground mt-1">per lot</p>
                 </div>
                 <div className="text-center p-3 bg-card rounded-lg">
                   <p className="text-sm text-muted-foreground mb-1">ATM Put Premium</p>
-                  <p className="text-2xl font-bold text-red-500">₹{realPremiums.putPremium.toFixed(2)}</p>
+                  <p className="text-2xl font-bold text-red-500">
+                    {typeof realPremiums.putPremium === "number" && Number.isFinite(realPremiums.putPremium)
+                      ? `₹${realPremiums.putPremium.toFixed(2)}`
+                      : "—"}
+                  </p>
                   <p className="text-xs text-muted-foreground mt-1">per lot</p>
                 </div>
               </div>
