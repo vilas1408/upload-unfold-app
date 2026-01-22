@@ -1085,9 +1085,9 @@ serve(async (req) => {
             }
           }
           
-          // Use Lovable AI to analyze sentiment of real news articles
-          const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-          if (LOVABLE_API_KEY) {
+          // Use Google Gemini API to analyze sentiment of real news articles
+          const GOOGLE_GEMINI_API_KEY = Deno.env.get('GOOGLE_GEMINI_API_KEY');
+          if (GOOGLE_GEMINI_API_KEY) {
             const articlesForAnalysis = qualityArticles.slice(0, 10).map((a: any) => ({
               title: a.title,
               description: a.description || a.title,
@@ -1103,25 +1103,20 @@ serve(async (req) => {
                 const sectorArticles = await fetchGoogleNewsRSS(sectorQuery);
                 
                 if (sectorArticles.length > 0) {
-                  const sectorSentimentResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+                  const sectorPrompt = `You are a financial sector sentiment analyzer. Return ONLY: "positive", "negative", or "neutral".\n\nAnalyze sector sentiment from these headlines:\n${sectorArticles.slice(0, 5).map((a: any) => a.title).join('\n')}`;
+                  
+                  const sectorSentimentResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GOOGLE_GEMINI_API_KEY}`, {
                     method: 'POST',
-                    headers: {
-                      'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-                      'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                      model: 'google/gemini-2.5-flash',
-                      messages: [
-                        { role: 'system', content: 'You are a financial sector sentiment analyzer. Return ONLY: "positive", "negative", or "neutral".' },
-                        { role: 'user', content: `Analyze sector sentiment from these headlines:\n${sectorArticles.slice(0, 5).map((a: any) => a.title).join('\n')}` }
-                      ],
-                      temperature: 0.2,
+                      contents: [{ parts: [{ text: sectorPrompt }] }],
+                      generationConfig: { temperature: 0.2 },
                     }),
                   });
                   
                   if (sectorSentimentResponse.ok) {
                     const sectorData = await sectorSentimentResponse.json();
-                    sectorSentiment = sectorData.choices?.[0]?.message?.content?.toLowerCase().trim();
+                    sectorSentiment = sectorData.candidates?.[0]?.content?.parts?.[0]?.text?.toLowerCase().trim();
                     console.log(`Sector sentiment: ${sectorSentiment}`);
                   }
                 }
@@ -1130,22 +1125,9 @@ serve(async (req) => {
               }
             }
             
-            const sentimentResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                model: 'google/gemini-2.5-flash',
-                messages: [
-                  {
-                    role: 'system',
-                    content: `You are a financial news sentiment analyzer with source credibility awareness. Higher credibility sources (economictimes.com, moneycontrol.com) should have more weight. Analyze sentiment and return ONLY valid JSON.`
-                  },
-                  {
-                    role: 'user',
-                    content: `Analyze the sentiment of these news articles about ${name} (${symbol}). Consider source credibility weights and detected events:
+            const newsPrompt = `You are a financial news sentiment analyzer with source credibility awareness. Higher credibility sources (economictimes.com, moneycontrol.com) should have more weight. Analyze sentiment and return ONLY valid JSON.
+
+Analyze the sentiment of these news articles about ${name} (${symbol}). Consider source credibility weights and detected events:
 
 Articles:
 ${JSON.stringify(articlesForAnalysis, null, 2)}
@@ -1159,16 +1141,20 @@ Return this JSON format:
   "summary": "brief summary considering source credibility and events (1-2 sentences)",
   "confidence": 0-100,
   "articles": [{"title": "string", "sentiment": "positive/negative/neutral", "impact": "high/medium/low"}]
-}`
-                  }
-                ],
-                temperature: 0.3,
+}`;
+            
+            const sentimentResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GOOGLE_GEMINI_API_KEY}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: newsPrompt }] }],
+                generationConfig: { temperature: 0.3 },
               }),
             });
             
             if (sentimentResponse.ok) {
               const sentimentData = await sentimentResponse.json();
-              const content = sentimentData.choices?.[0]?.message?.content;
+              const content = sentimentData.candidates?.[0]?.content?.parts?.[0]?.text;
               if (content) {
                 const jsonMatch = content.match(/\{[\s\S]*\}/);
                 if (jsonMatch) {
@@ -1484,9 +1470,9 @@ Return this JSON format:
     // Use AI prediction with real or estimated premium data
     console.log(`Generating AI prediction with ${dataSource === 'NSE_LIVE' ? 'real NSE' : 'estimated'} premium data`);
     
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured');
+    const GOOGLE_GEMINI_API_KEY = Deno.env.get('GOOGLE_GEMINI_API_KEY');
+    if (!GOOGLE_GEMINI_API_KEY) {
+      throw new Error('GOOGLE_GEMINI_API_KEY is not configured');
     }
     
     // Calculate realistic premium ranges
@@ -1716,33 +1702,25 @@ Provide realistic options strategy:
   }
 }`;
 
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
+    
+    const aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GOOGLE_GEMINI_API_KEY}`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'google/gemini-3-flash-preview',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.2,
-        max_tokens: 4096
+        contents: [{ parts: [{ text: fullPrompt }] }],
+        generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
       })
     });
 
     if (!aiResponse.ok) {
       const errorData = await aiResponse.json();
-      console.error('Lovable AI error:', aiResponse.status, errorData);
+      console.error('Google Gemini error:', aiResponse.status, errorData);
       
       let errorMessage = 'Failed to generate prediction. Please try again.';
       
       if (aiResponse.status === 429) {
         errorMessage = 'Rate limit reached. Please wait a moment and try again.';
-      } else if (aiResponse.status === 402) {
-        errorMessage = 'Payment required. Please add credits to your Lovable workspace.';
       } else if (aiResponse.status === 400) {
         errorMessage = 'Invalid request to AI service.';
       } else if (errorData.error?.message) {
@@ -1756,7 +1734,7 @@ Provide realistic options strategy:
     }
 
     const aiData = await aiResponse.json();
-    const content = aiData.choices?.[0]?.message?.content;
+    const content = aiData.candidates?.[0]?.content?.parts?.[0]?.text;
     
     if (!content) {
       throw new Error('No response from AI');

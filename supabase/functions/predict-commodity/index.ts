@@ -405,7 +405,7 @@ async function generateAIPrediction(
   expiryInfo: { expiryDate: Date; expiryStr: string; daysToExpiry: number },
   dataSource: string
 ): Promise<any> {
-  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+  // LOVABLE_API_KEY removed - using GOOGLE_GEMINI_API_KEY instead
   
   // Calculate ATM strike (round to nearest strike interval)
   const strikeInterval = config.strikeInterval || 100;
@@ -453,28 +453,24 @@ Focus on: trend alignment, global factors, and key risk.`;
     ? `Bullish setup suggests buying calls near support at ₹${technicals.support.toFixed(0)}.`
     : `Bearish setup suggests buying puts near resistance at ₹${technicals.resistance.toFixed(0)}.`;
 
-  // Try to get AI reasoning
-  if (LOVABLE_API_KEY) {
+  // Try to get AI reasoning using Google Gemini
+  const GOOGLE_GEMINI_API_KEY = Deno.env.get('GOOGLE_GEMINI_API_KEY');
+  if (GOOGLE_GEMINI_API_KEY) {
     try {
-      const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      const fullPrompt = `You are a commodity trading analyst. Provide concise trading analysis.\n\n${prompt}`;
+      
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GOOGLE_GEMINI_API_KEY}`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'google/gemini-2.5-flash',
-          messages: [
-            { role: 'system', content: 'You are a commodity trading analyst. Provide concise trading analysis.' },
-            { role: 'user', content: prompt }
-          ],
-          max_tokens: 300,
+          contents: [{ parts: [{ text: fullPrompt }] }],
+          generationConfig: { maxOutputTokens: 300 },
         }),
       });
       
       if (response.ok) {
         const data = await response.json();
-        reasoning = data.choices?.[0]?.message?.content || reasoning;
+        reasoning = data.candidates?.[0]?.content?.parts?.[0]?.text || reasoning;
       }
     } catch (error) {
       console.error('AI reasoning error:', error);
