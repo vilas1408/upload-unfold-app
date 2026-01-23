@@ -19,9 +19,9 @@ serve(async (req) => {
     
     console.log('Predicting stock:', symbol, companyName);
 
-    const GOOGLE_GEMINI_API_KEY = Deno.env.get('GOOGLE_GEMINI_API_KEY');
-    if (!GOOGLE_GEMINI_API_KEY) {
-      throw new Error('GOOGLE_GEMINI_API_KEY not configured');
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    if (!LOVABLE_API_KEY) {
+      throw new Error('LOVABLE_API_KEY not configured');
     }
 
     // Fetch data
@@ -39,18 +39,21 @@ serve(async (req) => {
   "articles": [{"title": "string", "sentiment": "positive/negative/neutral", "impact": "high/medium/low"}]
 }`;
 
-      const newsResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GOOGLE_GEMINI_API_KEY}`, {
+      const newsResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${LOVABLE_API_KEY}`
+        },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: newsPrompt }] }],
-          generationConfig: { temperature: 0.3 },
+          model: "google/gemini-2.5-flash",
+          messages: [{ role: "user", content: newsPrompt }],
         }),
       });
 
       if (newsResponse.ok) {
         const newsData = await newsResponse.json();
-        const content = newsData.candidates?.[0]?.content?.parts?.[0]?.text;
+        const content = newsData.choices?.[0]?.message?.content;
         if (content) {
           const jsonMatch = content.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
@@ -97,25 +100,31 @@ Provide JSON prediction (including news sentiment impact in your analysis):
   }
 }`;
 
-    const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
-    
-    const aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GOOGLE_GEMINI_API_KEY}`, {
+    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: fullPrompt }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
       })
     });
 
     if (!aiResponse.ok) {
       const errorData = await aiResponse.json();
-      console.error('Google Gemini error:', aiResponse.status, errorData);
+      console.error('Lovable AI error:', aiResponse.status, errorData);
       
       let errorMessage = 'Failed to generate prediction. Please try again.';
       
       if (aiResponse.status === 429) {
         errorMessage = 'Rate limit reached. Please wait a moment and try again.';
+      } else if (aiResponse.status === 402) {
+        errorMessage = 'Payment required. Please add funds to your Lovable workspace.';
       } else if (aiResponse.status === 400) {
         errorMessage = 'Invalid request to AI service.';
       } else if (errorData.error?.message) {
@@ -129,7 +138,7 @@ Provide JSON prediction (including news sentiment impact in your analysis):
     }
 
     const aiData = await aiResponse.json();
-    const content = aiData.candidates?.[0]?.content?.parts?.[0]?.text;
+    const content = aiData.choices?.[0]?.message?.content;
     
     if (!content) {
       throw new Error('No response from AI');

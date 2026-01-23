@@ -453,24 +453,28 @@ Focus on: trend alignment, global factors, and key risk.`;
     ? `Bullish setup suggests buying calls near support at ₹${technicals.support.toFixed(0)}.`
     : `Bearish setup suggests buying puts near resistance at ₹${technicals.resistance.toFixed(0)}.`;
 
-  // Try to get AI reasoning using Google Gemini
-  const GOOGLE_GEMINI_API_KEY = Deno.env.get('GOOGLE_GEMINI_API_KEY');
-  if (GOOGLE_GEMINI_API_KEY) {
+  // Try to get AI reasoning using Lovable AI Gateway
+  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+  if (LOVABLE_API_KEY) {
     try {
-      const fullPrompt = `You are a commodity trading analyst. Provide concise trading analysis.\n\n${prompt}`;
-      
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GOOGLE_GEMINI_API_KEY}`, {
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${LOVABLE_API_KEY}`
+        },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: fullPrompt }] }],
-          generationConfig: { maxOutputTokens: 300 },
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: "You are a commodity trading analyst. Provide concise trading analysis." },
+            { role: "user", content: prompt }
+          ],
         }),
       });
       
       if (response.ok) {
         const data = await response.json();
-        reasoning = data.candidates?.[0]?.content?.parts?.[0]?.text || reasoning;
+        reasoning = data.choices?.[0]?.message?.content || reasoning;
       }
     } catch (error) {
       console.error('AI reasoning error:', error);
