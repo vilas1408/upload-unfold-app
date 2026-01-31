@@ -111,3 +111,9 @@ verify_jwt = false
 
 [functions.predict-commodity]
 verify_jwt = false
+
+[functions.fetch-macro-indicators]
+verify_jwt = false
+
+[functions.fetch-commodity-fundamentals]
+verify_jwt = false
