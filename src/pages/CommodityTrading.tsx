@@ -22,6 +22,12 @@ const CommodityTrading = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [dataSource, setDataSource] = useState<'MCX_LIVE' | 'YAHOO_FINANCE' | 'AI_ESTIMATED' | null>(null);
   const [dataTimestamp, setDataTimestamp] = useState<string | null>(null);
+  const [technicals, setTechnicals] = useState<any | null>(null);
+  const [fundamentals, setFundamentals] = useState<any | null>(null);
+  const [macro, setMacro] = useState<any | null>(null);
+  const [forecasts, setForecasts] = useState<any | null>(null);
+  const [scenarios, setScenarios] = useState<any | null>(null);
+  const [termStructure, setTermStructure] = useState<any | null>(null);
   const [userPlan, setUserPlan] = useState<{
     plan: string;
     daily_limit: number;
@@ -100,6 +106,12 @@ const CommodityTrading = () => {
         setHistoricalData(data.historicalData);
         setDataSource(data.dataSource || 'AI_ESTIMATED');
         setDataTimestamp(data.dataTimestamp || null);
+        setTechnicals(data.technicals || null);
+        setFundamentals(data.fundamentals || null);
+        setMacro(data.macro || null);
+        setForecasts(data.forecasts || null);
+        setScenarios(data.scenarios || null);
+        setTermStructure(data.termStructure || null);
         
         toast({
           title: "Commodity Prediction Generated",
@@ -212,6 +224,12 @@ const CommodityTrading = () => {
               historicalData={historicalData}
               dataSource={dataSource}
               dataTimestamp={dataTimestamp || undefined}
+              technicals={technicals}
+              fundamentals={fundamentals}
+              macro={macro}
+              forecasts={forecasts}
+              scenarios={scenarios}
+              termStructure={termStructure}
             />
           </>
         )}
