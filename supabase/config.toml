@@ -117,3 +117,15 @@ verify_jwt = false
 
 [functions.fetch-commodity-fundamentals]
 verify_jwt = false
+
+[functions.fetch-india-market-context]
+verify_jwt = false
+
+[functions.fetch-stock-fundamentals]
+verify_jwt = false
+
+[functions.fetch-stock-derivatives]
+verify_jwt = false
+
+[functions.fetch-live-prices]
+verify_jwt = false

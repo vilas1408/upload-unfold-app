@@ -14,6 +14,9 @@ const Index = () => {
   const [selectedStock, setSelectedStock] = useState<{ symbol: string; name: string } | null>(null);
   const [prediction, setPrediction] = useState<any | null>(null);
   const [historicalData, setHistoricalData] = useState<any[] | null>(null);
+  const [marketContext, setMarketContext] = useState<any | null>(null);
+  const [fundamentals, setFundamentals] = useState<any | null>(null);
+  const [derivatives, setDerivatives] = useState<any | null>(null);
   const [isCached, setIsCached] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -39,27 +42,67 @@ const Index = () => {
     setSelectedStock({ symbol, name });
     setIsLoading(true);
     setPrediction(null);
+    setMarketContext(null);
+    setFundamentals(null);
+    setDerivatives(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke('predict-stock', {
-        body: { symbol, companyName: name }
-      });
+      // Fetch all data in parallel
+      const [predictionResult, marketResult, fundamentalsResult, derivativesResult] = await Promise.all([
+        supabase.functions.invoke('predict-stock', {
+          body: { symbol, companyName: name }
+        }),
+        supabase.functions.invoke('fetch-india-market-context', {
+          body: {}
+        }),
+        supabase.functions.invoke('fetch-stock-fundamentals', {
+          body: { symbol, companyName: name }
+        }),
+        supabase.functions.invoke('fetch-stock-derivatives', {
+          body: { symbol, currentPrice: null }
+        }),
+      ]);
 
-      // Check if data contains an error message (from 402/429 responses)
-      if (data && !data.success && data.error) {
-        throw new Error(data.error);
+      // Handle prediction result
+      if (predictionResult.data && !predictionResult.data.success && predictionResult.data.error) {
+        throw new Error(predictionResult.data.error);
       }
 
-      if (error) throw error;
+      if (predictionResult.error) throw predictionResult.error;
 
-      if (data.success) {
-        setPrediction(data.prediction);
-        setHistoricalData(data.historicalData);
-        setIsCached(data.cached || false);
+      if (predictionResult.data?.success) {
+        setPrediction(predictionResult.data.prediction);
+        setHistoricalData(predictionResult.data.historicalData);
+        setIsCached(predictionResult.data.cached || false);
+
+        // Set market context
+        if (marketResult.data?.success) {
+          setMarketContext(marketResult.data.data);
+        }
+
+        // Set fundamentals
+        if (fundamentalsResult.data?.success) {
+          setFundamentals(fundamentalsResult.data.data);
+        }
+
+        // Fetch derivatives with current price now that we have it
+        if (predictionResult.data.prediction?.technicals?.currentPrice) {
+          const derivativesWithPrice = await supabase.functions.invoke('fetch-stock-derivatives', {
+            body: { 
+              symbol, 
+              currentPrice: predictionResult.data.prediction.technicals.currentPrice 
+            }
+          });
+          if (derivativesWithPrice.data?.success) {
+            setDerivatives(derivativesWithPrice.data.data);
+          }
+        } else if (derivativesResult.data?.success) {
+          setDerivatives(derivativesResult.data.data);
+        }
         
         toast({
-          title: "Prediction Generated",
-          description: `Next-day prediction for ${name} is ready! ${data.cached ? '(Using today\'s cached prediction)' : ''}`,
+          title: "Research Report Generated",
+          description: `Professional analysis for ${name} is ready! ${predictionResult.data.cached ? '(Using today\'s cached prediction)' : ''}`,
         });
 
         // Scroll to prediction
@@ -70,13 +113,13 @@ const Index = () => {
           });
         }, 100);
       } else {
-        throw new Error(data.error || 'Prediction failed');
+        throw new Error(predictionResult.data?.error || 'Prediction failed');
       }
     } catch (error: any) {
       console.error('Prediction error:', error);
       toast({
-        title: "Prediction Failed",
-        description: error.message || "Failed to generate prediction. Please try again.",
+        title: "Analysis Failed",
+        description: error.message || "Failed to generate research report. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -91,7 +134,9 @@ const Index = () => {
       <StockSelector onSelectStock={handleSelectStock} />
       {isLoading && (
         <div className="text-center py-20">
-          <p className="text-xl text-muted-foreground">Analyzing 30 days of data and generating AI prediction...</p>
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
+          <p className="text-xl text-muted-foreground">Generating professional research report...</p>
+          <p className="text-sm text-muted-foreground mt-2">Analyzing 100 days of data, market context, and news sentiment</p>
         </div>
       )}
       {selectedStock && prediction && historicalData && (
@@ -100,6 +145,9 @@ const Index = () => {
           prediction={prediction}
           historicalData={historicalData}
           isCached={isCached}
+          marketContext={marketContext}
+          fundamentals={fundamentals}
+          derivatives={derivatives}
         />
       )}
       <Footer />
