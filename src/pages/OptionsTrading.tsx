@@ -23,8 +23,10 @@ const OptionsTrading = () => {
   const [historicalData, setHistoricalData] = useState<any[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [dataSource, setDataSource] = useState<'NSE_LIVE' | 'AI_ESTIMATED' | null>(null);
-  const [realPremiums, setRealPremiums] = useState<{ callPremium: number; putPremium: number } | null>(null);
+  const [realPremiums, setRealPremiums] = useState<{ callPremium: number; putPremium: number; callIV?: number; putIV?: number } | null>(null);
   const [expiryInfo, setExpiryInfo] = useState<any | null>(null);
+  const [technicalAnalysis, setTechnicalAnalysis] = useState<any | null>(null);
+  const [ivAnalysis, setIvAnalysis] = useState<any | null>(null);
   const [userPlan, setUserPlan] = useState<{
     plan: string;
     daily_limit: number;
@@ -105,10 +107,12 @@ const OptionsTrading = () => {
         setDataSource(data.dataSource || 'AI_ESTIMATED');
         setRealPremiums(data.realPremiums || null);
         setExpiryInfo(data.expiryInfo || null);
+        setTechnicalAnalysis(data.technicalAnalysis || null);
+        setIvAnalysis(data.ivAnalysis || null);
         
         toast({
-          title: "Options Prediction Generated",
-          description: `${data.dataSource === 'NSE_LIVE' ? '🟢 LIVE NSE DATA:' : '🔮 AI Estimate:'} Options analysis for ${name} is ready!`,
+          title: "Options Research Report Generated",
+          description: `${data.dataSource === 'NSE_LIVE' ? '🟢 LIVE NSE DATA:' : '🔮 AI Estimate:'} Professional derivatives analysis for ${name} is ready!`,
         });
 
         setTimeout(() => {
@@ -214,6 +218,8 @@ const OptionsTrading = () => {
               dataSource={dataSource}
               realPremiums={realPremiums}
               expiryInfo={expiryInfo}
+              technicalAnalysis={technicalAnalysis}
+              ivAnalysis={ivAnalysis}
             />
           </>
         )}

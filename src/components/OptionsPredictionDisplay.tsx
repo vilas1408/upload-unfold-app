@@ -1,8 +1,17 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { TrendingUp, TrendingDown, Minus, AlertTriangle, AlertCircle, Target, Shield, Activity, Brain, Calendar, Clock, BarChart3, Layers, Hash } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { TrendingUp, TrendingDown, AlertTriangle, AlertCircle, Activity, Calendar, Clock, BarChart3, Brain, Newspaper, Target, Gauge, LineChart } from "lucide-react";
+import { LineChart as RechartsLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+
+// Professional Component Imports
+import OptionChainAnalysisCard from "./options/OptionChainAnalysisCard";
+import GreeksAnalysisCard from "./options/GreeksAnalysisCard";
+import VolatilityStudyCard from "./options/VolatilityStudyCard";
+import TradeSetupCard from "./options/TradeSetupCard";
+import OptionsScenarioCard from "./options/OptionsScenarioCard";
+import TechnicalUnderlyingCard from "./options/TechnicalUnderlyingCard";
 
 interface OptionsPrediction {
   strategy: string;
@@ -40,6 +49,13 @@ interface OptionsPrediction {
     gamma: number;
     theta: number;
     vega: number;
+    rho?: number;
+    interpretation?: {
+      delta?: string;
+      theta?: string;
+      vega?: string;
+      gamma?: string;
+    };
   };
   reasoning: string;
   riskLevel: string;
@@ -61,7 +77,6 @@ interface OptionsPrediction {
     bidPrice: number;
     askPrice: number;
   };
-  // Options Flow Analysis (PCR & Max Pain)
   optionsFlow?: {
     pcr: number | null;
     pcrOI: number | null;
@@ -69,10 +84,8 @@ interface OptionsPrediction {
     maxPain: number | null;
     maxPainInterpretation: string;
   };
-  // Fibonacci Levels
   fibonacciLevels?: { [key: string]: number };
   fibonacciInterpretation?: string;
-  // Pivot Points
   pivotPoints?: {
     pivot: number;
     r1: number;
@@ -82,6 +95,17 @@ interface OptionsPrediction {
     s2: number;
     s3: number;
     interpretation: string;
+  };
+  greeksValidation?: {
+    warnings: string[];
+    riskAdjustment: number;
+    adjustedConfidence: number;
+  };
+  positionSizing?: {
+    recommendedMultiplier: number;
+    recommendedLots: number;
+    reasoning: string;
+    adjustedInvestment: number;
   };
 }
 
@@ -93,6 +117,8 @@ interface OptionsPredictionDisplayProps {
   realPremiums?: {
     callPremium: number;
     putPremium: number;
+    callIV?: number;
+    putIV?: number;
   } | null;
   expiryInfo?: {
     date: string;
@@ -100,9 +126,25 @@ interface OptionsPredictionDisplayProps {
     daysToExpiry: number;
     isExpiryToday: boolean;
   };
+  technicalAnalysis?: any;
+  ivAnalysis?: {
+    ivRank: number;
+    ivPercentile: number;
+    level: string;
+    strategy: string;
+  };
 }
 
-const OptionsPredictionDisplay = ({ option, prediction, historicalData, dataSource, realPremiums, expiryInfo }: OptionsPredictionDisplayProps) => {
+const OptionsPredictionDisplay = ({ 
+  option, 
+  prediction, 
+  historicalData, 
+  dataSource, 
+  realPremiums, 
+  expiryInfo,
+  technicalAnalysis,
+  ivAnalysis
+}: OptionsPredictionDisplayProps) => {
   const getConfidenceColor = (confidence: string) => {
     const value = parseInt(confidence);
     if (value >= 70) return "text-green-500";
@@ -117,33 +159,6 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData, dataSour
     return "bg-red-500/10 border-red-500/20";
   };
 
-  const getRiskColor = (risk: string) => {
-    if (risk === 'Low') return "bg-green-500/10 text-green-500 border-green-500/20";
-    if (risk === 'Medium') return "bg-yellow-500/10 text-yellow-500 border-yellow-500/20";
-    return "bg-red-500/10 text-red-500 border-red-500/20";
-  };
-
-  const getPCRColor = (pcr: number | null) => {
-    if (!pcr) return "text-muted-foreground";
-    if (pcr > 1.2) return "text-green-500";
-    if (pcr < 0.8) return "text-red-500";
-    return "text-yellow-500";
-  };
-
-  const getPCRSentiment = (pcr: number | null) => {
-    if (!pcr) return "N/A";
-    if (pcr > 1.2) return "Bullish";
-    if (pcr < 0.8) return "Bearish";
-    return "Neutral";
-  };
-
-  const getPCRBgColor = (pcr: number | null) => {
-    if (!pcr) return "bg-muted/50";
-    if (pcr > 1.2) return "bg-green-500/10 border-green-500/20";
-    if (pcr < 0.8) return "bg-red-500/10 border-red-500/20";
-    return "bg-yellow-500/10 border-yellow-500/20";
-  };
-
   const chartData = historicalData.slice(-30).map((item) => ({
     date: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     price: item.close,
@@ -154,690 +169,287 @@ const OptionsPredictionDisplay = ({ option, prediction, historicalData, dataSour
     (prediction.newsSentiment?.overall === 'negative' && prediction.optionType === 'CALL') ||
     (prediction.newsSentiment?.overall === 'positive' && prediction.optionType === 'PUT');
 
+  const spotPrice = prediction.liveData?.spotPrice || historicalData[historicalData.length - 1]?.close || 0;
+  const entryPremium = prediction.premium?.buyLeg || 100;
+  const lotSize = prediction.lotSize || 50;
+
   return (
     <div id="options-prediction" className="container mx-auto px-4 py-12">
-      <Card className="p-6 md:p-8 backdrop-blur-sm bg-card/50 border-primary/20">
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
-            <div>
-              <h2 className="text-3xl font-bold gradient-text mb-2">
-                {option.name} ({option.symbol})
-              </h2>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="outline" className="text-sm">
-                  {option.type === 'share' ? 'Stock Options' : 'Index Options'}
+      {/* Header Section */}
+      <Card className="p-6 md:p-8 backdrop-blur-sm bg-card/50 border-primary/20 mb-6">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
+          <div>
+            <h2 className="text-3xl font-bold gradient-text mb-2">
+              {option.name} ({option.symbol})
+            </h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant="outline" className="text-sm">
+                {option.type === 'share' ? 'Stock Options' : 'Index Options'}
+              </Badge>
+              {dataSource && (
+                <Badge 
+                  variant={dataSource === 'NSE_LIVE' ? 'default' : 'destructive'} 
+                  className={dataSource === 'NSE_LIVE' ? 'flex items-center gap-1 bg-green-600 hover:bg-green-700' : 'flex items-center gap-1 bg-amber-600 hover:bg-amber-700'}
+                >
+                  {dataSource === 'NSE_LIVE' ? (
+                    <>
+                      <Activity className="h-3 w-3" />
+                      Live NSE Data
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle className="h-3 w-3" />
+                      Estimated Premiums
+                    </>
+                  )}
                 </Badge>
-                {dataSource && (
-                  <Badge 
-                    variant={dataSource === 'NSE_LIVE' ? 'default' : 'destructive'} 
-                    className={dataSource === 'NSE_LIVE' ? 'flex items-center gap-1 bg-green-600 hover:bg-green-700' : 'flex items-center gap-1 bg-amber-600 hover:bg-amber-700'}
-                  >
-                    {dataSource === 'NSE_LIVE' ? (
-                      <>
-                        <Activity className="h-3 w-3" />
-                        Live NSE Data
-                      </>
-                    ) : (
-                      <>
-                        <AlertTriangle className="h-3 w-3" />
-                        Estimated Premiums - NSE Unavailable
-                      </>
-                    )}
-                  </Badge>
-                )}
-                {expiryInfo && (
-                  <Badge 
-                    variant={expiryInfo.isExpiryToday ? 'destructive' : 'outline'}
-                    className="flex items-center gap-1"
-                  >
-                    <Calendar className="h-3 w-3" />
-                    {expiryInfo.isExpiryToday ? 'TODAY - EXIT BY 3:15 PM' : 
-                     expiryInfo.daysToExpiry === 1 ? 'Tomorrow' :
-                     `${expiryInfo.daysToExpiry} days to expiry`}
-                  </Badge>
-                )}
-              </div>
-            </div>
-            <Badge className={`text-lg px-4 py-2 ${getConfidenceBgColor(prediction.probability)}`}>
-              <span className={getConfidenceColor(prediction.probability)}>
-                {prediction.probability} Probability
-              </span>
-            </Badge>
-          </div>
-
-          {/* Real Premium Display */}
-          {realPremiums && (
-            <Card className="p-4 mb-6 bg-primary/5 border-primary/20">
-              <div className="flex items-center gap-2 mb-3">
-                <Activity className="h-5 w-5 text-primary" />
-                <h3 className="text-lg font-semibold">Live NSE Option Premiums</h3>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="text-center p-3 bg-card rounded-lg">
-                  <p className="text-sm text-muted-foreground mb-1">ATM Call Premium</p>
-                  <p className="text-2xl font-bold text-green-500">
-                    {typeof realPremiums.callPremium === "number" && Number.isFinite(realPremiums.callPremium)
-                      ? `₹${realPremiums.callPremium.toFixed(2)}`
-                      : "—"}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">per lot</p>
-                </div>
-                <div className="text-center p-3 bg-card rounded-lg">
-                  <p className="text-sm text-muted-foreground mb-1">ATM Put Premium</p>
-                  <p className="text-2xl font-bold text-red-500">
-                    {typeof realPremiums.putPremium === "number" && Number.isFinite(realPremiums.putPremium)
-                      ? `₹${realPremiums.putPremium.toFixed(2)}`
-                      : "—"}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">per lot</p>
-                </div>
-              </div>
-              <div className="flex items-center justify-center gap-2 mt-3 text-xs text-muted-foreground">
-                <Clock className="h-3 w-3" />
-                <span>Last updated: {new Date().toLocaleTimeString('en-IN', { 
-                  hour: '2-digit', 
-                  minute: '2-digit',
-                  second: '2-digit',
-                  timeZone: 'Asia/Kolkata'
-                })} IST</span>
-              </div>
-            </Card>
-          )}
-
-          {/* Sentiment-Strategy Conflict Warning */}
-          {hasConflict && (
-            <Alert variant="destructive" className="mb-6">
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Strategy-Sentiment Conflict Detected</AlertTitle>
-              <AlertDescription>
-                News sentiment is <strong>{prediction.newsSentiment?.overall}</strong> but strategy recommends <strong>{prediction.optionType}</strong>. 
-                This indicates mixed signals between fundamentals and technicals. The system has auto-corrected to align with news sentiment (higher priority). Trade with caution.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Time to Expiry Warning */}
-          {expiryInfo && expiryInfo.daysToExpiry <= 2 && !expiryInfo.isExpiryToday && (
-            <Card className="p-4 mb-6 bg-yellow-500/10 border-yellow-500/20">
-              <div className="flex items-center gap-2">
-                <Clock className="h-5 w-5 text-yellow-500" />
-                <div>
-                  <p className="font-semibold text-yellow-600 dark:text-yellow-400">Near Expiry Warning</p>
-                  <p className="text-sm text-muted-foreground">
-                    Only {expiryInfo.daysToExpiry} day{expiryInfo.daysToExpiry > 1 ? 's' : ''} until expiry. 
-                    Limited time value remaining - focus on directional moves.
-                  </p>
-                </div>
-              </div>
-            </Card>
-          )}
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-6 mb-8">
-          <Card className="p-6 bg-accent/50">
-            <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-              <Target className="h-5 w-5 text-primary" />
-              Recommended Strategy
-            </h3>
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Strategy Type</p>
-                <p className="text-2xl font-bold text-primary">{prediction.strategy}</p>
-              </div>
-              
-              {/* Prominent Option Details */}
-              <div className="grid grid-cols-2 gap-3 p-4 bg-background/50 rounded-lg border border-border">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Option</p>
-                  <Badge className={prediction.optionType === 'CALL' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}>
-                    {prediction.optionType}
-                  </Badge>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Strike</p>
-                  <p className="text-lg font-bold">₹{typeof prediction.strikePrice === 'number' ? prediction.strikePrice.toLocaleString('en-IN') : prediction.strikePrice}</p>
-                </div>
-                {prediction.expiryDate && (
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Expiry</p>
-                    <p className="text-sm font-semibold">{prediction.expiryDate}</p>
-                  </div>
-                )}
-                {prediction.lotSize && (
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Lot Size</p>
-                    <p className="text-sm font-semibold">{prediction.lotSize} units</p>
-                  </div>
-                )}
-              </div>
-              
-              {/* Premium Information */}
-              {prediction.premium && (
-                <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
-                  <h4 className="text-sm font-semibold mb-3 text-primary flex items-center gap-2">
-                    Premium Details
-                    {prediction.liveData && (
-                      <Badge className="bg-green-500 text-white">LIVE</Badge>
-                    )}
-                  </h4>
-                  <div className="grid grid-cols-1 gap-2">
-                    <div className="flex justify-between items-center py-2 border-b border-border/50">
-                      <span className="text-xs text-muted-foreground">
-                        {prediction.liveData ? 'Current LTP' : 'Entry Premium'}
-                      </span>
-                      <span className="font-bold text-lg">₹{prediction.premium.buyLeg}/lot</span>
-                    </div>
-                    {prediction.liveData && (
-                      <>
-                        <div className="flex justify-between items-center py-2 border-b border-border/50">
-                          <span className="text-xs text-muted-foreground">Bid Price</span>
-                          <span className="font-semibold">₹{prediction.liveData.bidPrice.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between items-center py-2 border-b border-border/50">
-                          <span className="text-xs text-muted-foreground">Ask Price</span>
-                          <span className="font-semibold">₹{prediction.liveData.askPrice.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between items-center py-2 border-b border-border/50">
-                          <span className="text-xs text-muted-foreground">Open Interest</span>
-                          <span className="font-semibold">{prediction.liveData.openInterest.toLocaleString('en-IN')}</span>
-                        </div>
-                        <div className="flex justify-between items-center py-2 border-b border-border/50">
-                          <span className="text-xs text-muted-foreground">Volume</span>
-                          <span className="font-semibold">{prediction.liveData.volume.toLocaleString('en-IN')}</span>
-                        </div>
-                      </>
-                    )}
-                    <div className="flex justify-between items-center py-2 border-b border-border/50">
-                      <span className="text-xs text-muted-foreground">Target Premium</span>
-                      <span className="font-bold text-green-500">
-                        ₹{Math.round(prediction.premium.targetPremium || prediction.premium.buyLeg * 1.4)}/lot 
-                        ({prediction.premium.targetPremium 
-                          ? `+${Math.round(((prediction.premium.targetPremium - prediction.premium.buyLeg) / prediction.premium.buyLeg) * 100)}%`
-                          : '+40%'})
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center py-2">
-                      <span className="text-xs text-muted-foreground">Stop Loss Premium</span>
-                      <span className="font-bold text-red-500">
-                        ₹{Math.round(prediction.premium.stopLossPremium || prediction.premium.buyLeg * 0.7)}/lot 
-                        ({prediction.premium.stopLossPremium 
-                          ? `${Math.round(((prediction.premium.stopLossPremium - prediction.premium.buyLeg) / prediction.premium.buyLeg) * 100)}%`
-                          : '-30%'})
-                      </span>
-                    </div>
-                  </div>
-                </div>
               )}
-              
-              {prediction.totalInvestment && (
-                <div className="p-4 bg-background/50 rounded-lg border border-border">
-                  <p className="text-xs text-muted-foreground mb-1">Total Investment</p>
-                  <p className="text-3xl font-bold text-primary">₹{prediction.totalInvestment.toLocaleString('en-IN')}</p>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    ₹{prediction.premium?.buyLeg || 0} × {prediction.lotSize} units
-                  </p>
-                </div>
+              {expiryInfo && (
+                <Badge 
+                  variant={expiryInfo.isExpiryToday ? 'destructive' : 'outline'}
+                  className="flex items-center gap-1"
+                >
+                  <Calendar className="h-3 w-3" />
+                  {expiryInfo.isExpiryToday ? 'EXPIRY TODAY' : 
+                   expiryInfo.daysToExpiry === 1 ? 'Tomorrow' :
+                   `${expiryInfo.daysToExpiry} days to expiry`}
+                </Badge>
               )}
-              
-              <div className="space-y-2 mt-4">
-                <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
-                  <div className="text-xs text-muted-foreground mb-1">Entry Price</div>
-                  <div className="text-lg font-bold text-primary">
-                    ₹{(prediction.entryPrice || (typeof prediction.strikePrice === 'number' ? prediction.strikePrice : parseFloat(prediction.strikePrice as string))).toFixed(2)}
-                  </div>
-                </div>
-                <div className="p-3 bg-green-500/10 rounded-lg border border-green-500/20">
-                  <div className="text-xs text-muted-foreground mb-1">Target Exit Price</div>
-                  <div className="text-lg font-bold text-green-500">
-                    ₹{(prediction.targetExitPrice || (typeof prediction.targetPrice === 'number' ? prediction.targetPrice : parseFloat(prediction.targetPrice as string))).toFixed(2)}
-                  </div>
-                </div>
-                <div className="p-3 bg-red-500/10 rounded-lg border border-red-500/20">
-                  <div className="text-xs text-muted-foreground mb-1">Stop Loss Price</div>
-                  <div className="text-lg font-bold text-red-500">
-                    ₹{(prediction.stopLossPrice || prediction.stopLoss || 0).toFixed(2)}
-                  </div>
-                </div>
-              </div>
-              
-              {prediction.totalInvestment && (
-                <div className="mt-4 p-4 bg-background/50 rounded-lg border border-border">
-                  <p className="text-sm text-muted-foreground mb-2">Total Investment Required</p>
-                  <p className="text-2xl font-bold text-primary">₹{prediction.totalInvestment.toLocaleString('en-IN')}</p>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Premium ₹{prediction.premium?.buyLeg || 0} per lot × {prediction.lotSize} lots
-                  </p>
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Time Frame</p>
-                  <p className="font-semibold">{prediction.timeFrame}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Technical Score</p>
-                  <Badge variant="outline">{prediction.technicalScore}/10</Badge>
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="p-6 bg-accent/50">
-            <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-              <Shield className="h-5 w-5 text-primary" />
-              Profit & Loss Analysis
-            </h3>
-            <div className="space-y-4">
-              {prediction.profitLoss ? (
-                <>
-                  <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">Target Profit</p>
-                    <p className="text-2xl font-bold text-green-500">
-                      +₹{prediction.profitLoss.target.toLocaleString('en-IN')}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      At target price ₹{typeof prediction.targetPrice === 'number' ? prediction.targetPrice.toFixed(2) : prediction.targetPrice}
-                    </p>
-                  </div>
-                  <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">Stop Loss</p>
-                    <p className="text-2xl font-bold text-red-500">
-                      ₹{(prediction.profitLoss.stopLoss || 0).toLocaleString('en-IN')}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      At stop loss ₹{(prediction.stopLoss || prediction.stopLossPrice || 0).toFixed(2)}
-                    </p>
-                  </div>
-                  <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">Breakeven Point</p>
-                    <p className="text-xl font-bold text-yellow-500">
-                      ₹{prediction.profitLoss.breakeven.toFixed(2)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Expected Return</p>
-                    <p className="text-2xl font-bold text-green-500">
-                      +{Number(prediction.expectedReturn).toFixed(2)}%
-                    </p>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Expected Return</p>
-                    <p className="text-2xl font-bold text-green-500">
-                      +{Number(prediction.expectedReturn).toFixed(2)}%
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Max Gain</p>
-                      <p className="text-lg font-semibold text-green-500">₹{Number(prediction.maxGain).toFixed(2)}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Max Loss</p>
-                      <p className="text-lg font-semibold text-red-500">₹{Number(prediction.maxLoss).toFixed(2)}</p>
-                    </div>
-                  </div>
-                </>
-              )}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Risk Level</p>
-                  <Badge className={getRiskColor(prediction.riskLevel)}>
-                    {prediction.riskLevel}
-                  </Badge>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">IV Rank</p>
-                  <p className="text-lg font-semibold">{prediction.ivRank}%</p>
-                </div>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        <Card className="p-6 bg-accent/50 mb-8">
-          <h3 className="text-xl font-semibold mb-4">Price Targets & Greeks</h3>
-          <div className="grid md:grid-cols-3 gap-6">
-            <div>
-              <h4 className="font-semibold mb-3">Price Targets</h4>
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Target Price:</span>
-                  <span className="font-semibold text-green-500">{typeof prediction.targetPrice === 'number' ? `₹${prediction.targetPrice.toFixed(2)}` : prediction.targetPrice}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Stop Loss:</span>
-                  <span className="font-semibold text-red-500">₹{(Number(prediction.stopLoss) || Number(prediction.stopLossPrice) || 0).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Breakeven:</span>
-                  <span className="font-semibold">{typeof prediction.breakeven === 'number' ? `₹${prediction.breakeven.toFixed(2)}` : prediction.breakeven}</span>
-                </div>
-              </div>
-            </div>
-
-            {prediction.premium && (
-              <div>
-                <h4 className="font-semibold mb-3">Premium Details</h4>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Premium per Lot:</span>
-                    <span className="font-semibold text-primary">₹{Number(prediction.premium.buyLeg).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Number of Lots:</span>
-                    <span className="font-semibold">{prediction.lotSize || 1}</span>
-                  </div>
-                  <div className="flex justify-between items-center pt-2 border-t border-border">
-                    <span className="text-sm font-semibold">Total Premium:</span>
-                    <span className="font-bold text-primary">₹{(Number(prediction.premium.buyLeg) * (prediction.lotSize || 1)).toLocaleString('en-IN')}</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">{prediction.premium.description}</p>
-                </div>
-              </div>
-            )}
-
-            <div className="md:col-span-2">
-              <h4 className="font-semibold mb-3">Option Greeks</h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Delta (Δ):</span>
-                    <span className="font-semibold">{Number(prediction.greeks.delta).toFixed(3)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Gamma (Γ):</span>
-                    <span className="font-semibold">{Number(prediction.greeks.gamma).toFixed(3)}</span>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Theta (Θ):</span>
-                    <span className="font-semibold">{Number(prediction.greeks.theta).toFixed(3)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Vega (ν):</span>
-                    <span className="font-semibold">{Number(prediction.greeks.vega).toFixed(3)}</span>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
-        </Card>
+          <Badge className={`text-lg px-4 py-2 ${getConfidenceBgColor(prediction.probability)}`}>
+            <span className={getConfidenceColor(prediction.probability)}>
+              {prediction.probability} Probability
+            </span>
+          </Badge>
+        </div>
 
-        {/* Options Flow Analysis Section */}
-        {(prediction.optionsFlow || prediction.fibonacciLevels || prediction.pivotPoints) && (
-          <Card className="p-6 bg-accent/50 mb-8">
-            <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
-              <BarChart3 className="h-5 w-5 text-primary" />
-              Options Flow Analysis
-            </h3>
-            
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* PCR & Max Pain Section */}
-              {prediction.optionsFlow && (
-                <div className="space-y-4">
-                  <h4 className="font-semibold flex items-center gap-2">
-                    <Layers className="h-4 w-4 text-primary" />
-                    Put-Call Ratio & Max Pain
-                  </h4>
-                  
-                  {/* PCR Display */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className={`p-3 rounded-lg border ${getPCRBgColor(prediction.optionsFlow.pcr)}`}>
-                      <p className="text-xs text-muted-foreground mb-1">PCR (Volume)</p>
-                      <p className={`text-xl font-bold ${getPCRColor(prediction.optionsFlow.pcr)}`}>
-                        {prediction.optionsFlow.pcr?.toFixed(2) || 'N/A'}
-                      </p>
-                      <Badge variant="outline" className={`mt-1 text-xs ${getPCRColor(prediction.optionsFlow.pcr)}`}>
-                        {getPCRSentiment(prediction.optionsFlow.pcr)}
-                      </Badge>
-                    </div>
-                    <div className={`p-3 rounded-lg border ${getPCRBgColor(prediction.optionsFlow.pcrOI)}`}>
-                      <p className="text-xs text-muted-foreground mb-1">PCR (OI)</p>
-                      <p className={`text-xl font-bold ${getPCRColor(prediction.optionsFlow.pcrOI)}`}>
-                        {prediction.optionsFlow.pcrOI?.toFixed(2) || 'N/A'}
-                      </p>
-                      <Badge variant="outline" className={`mt-1 text-xs ${getPCRColor(prediction.optionsFlow.pcrOI)}`}>
-                        {getPCRSentiment(prediction.optionsFlow.pcrOI)}
-                      </Badge>
-                    </div>
-                  </div>
-                  
-                  {prediction.optionsFlow.pcrInterpretation && (
-                    <p className="text-xs text-muted-foreground bg-background/50 p-2 rounded">
-                      {prediction.optionsFlow.pcrInterpretation}
-                    </p>
-                  )}
-                  
-                  {/* Max Pain Display */}
-                  {prediction.optionsFlow.maxPain && (
-                    <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-semibold flex items-center gap-2">
-                          <Target className="h-4 w-4 text-primary" />
-                          Max Pain Strike
-                        </span>
-                        <span className="text-2xl font-bold text-primary">
-                          ₹{prediction.optionsFlow.maxPain.toLocaleString('en-IN')}
-                        </span>
-                      </div>
-                      {prediction.optionsFlow.maxPainInterpretation && (
-                        <p className="text-xs text-muted-foreground">
-                          {prediction.optionsFlow.maxPainInterpretation}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-              
-              {/* Fibonacci Levels Section */}
-              {prediction.fibonacciLevels && (
-                <div className="space-y-4">
-                  <h4 className="font-semibold flex items-center gap-2">
-                    <Hash className="h-4 w-4 text-primary" />
-                    Fibonacci Retracement
-                  </h4>
-                  
-                  <div className="space-y-2">
-                    {Object.entries(prediction.fibonacciLevels)
-                      .sort(([a], [b]) => parseFloat(b.replace('%', '')) - parseFloat(a.replace('%', '')))
-                      .map(([level, price]) => (
-                        <div 
-                          key={level} 
-                          className={`flex justify-between items-center px-3 py-2 rounded border ${
-                            level === '50%' 
-                              ? 'bg-yellow-500/10 border-yellow-500/20' 
-                              : level === '61.8%' || level === '38.2%'
-                              ? 'bg-primary/10 border-primary/20'
-                              : 'bg-background/50 border-border/50'
-                          }`}
-                        >
-                          <span className={`text-sm font-medium ${
-                            level === '50%' ? 'text-yellow-500' : 
-                            level === '61.8%' || level === '38.2%' ? 'text-primary' : 
-                            'text-muted-foreground'
-                          }`}>
-                            {level}
-                          </span>
-                          <span className="font-semibold">₹{price.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
-                        </div>
-                      ))
-                    }
-                  </div>
-                  
-                  {prediction.fibonacciInterpretation && (
-                    <p className="text-xs text-muted-foreground bg-background/50 p-2 rounded">
-                      {prediction.fibonacciInterpretation}
-                    </p>
-                  )}
-                </div>
-              )}
-              
-              {/* Pivot Points Section */}
-              {prediction.pivotPoints && (
-                <div className="space-y-4 md:col-span-2">
-                  <h4 className="font-semibold flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-primary" />
-                    Daily Pivot Points
-                  </h4>
-                  
-                  <div className="grid grid-cols-7 gap-2 text-center">
-                    {/* Resistance Levels */}
-                    <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
-                      <p className="text-xs text-muted-foreground mb-1">R3</p>
-                      <p className="font-bold text-green-500">₹{prediction.pivotPoints.r3.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
-                    </div>
-                    <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
-                      <p className="text-xs text-muted-foreground mb-1">R2</p>
-                      <p className="font-bold text-green-500">₹{prediction.pivotPoints.r2.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
-                    </div>
-                    <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
-                      <p className="text-xs text-muted-foreground mb-1">R1</p>
-                      <p className="font-bold text-green-500">₹{prediction.pivotPoints.r1.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
-                    </div>
-                    
-                    {/* Pivot Point */}
-                    <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
-                      <p className="text-xs text-muted-foreground mb-1">PP</p>
-                      <p className="font-bold text-primary">₹{prediction.pivotPoints.pivot.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
-                    </div>
-                    
-                    {/* Support Levels */}
-                    <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-                      <p className="text-xs text-muted-foreground mb-1">S1</p>
-                      <p className="font-bold text-red-500">₹{prediction.pivotPoints.s1.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
-                    </div>
-                    <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-                      <p className="text-xs text-muted-foreground mb-1">S2</p>
-                      <p className="font-bold text-red-500">₹{prediction.pivotPoints.s2.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
-                    </div>
-                    <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-                      <p className="text-xs text-muted-foreground mb-1">S3</p>
-                      <p className="font-bold text-red-500">₹{prediction.pivotPoints.s3.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
-                    </div>
-                  </div>
-                  
-                  {prediction.pivotPoints.interpretation && (
-                    <p className="text-xs text-muted-foreground bg-background/50 p-2 rounded">
-                      {prediction.pivotPoints.interpretation}
-                    </p>
-                  )}
-                </div>
-              )}
+        {/* Live Premium Display */}
+        {realPremiums && (
+          <div className="grid grid-cols-4 gap-4 p-4 bg-muted/30 rounded-lg border border-border">
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground mb-1">ATM Call Premium</p>
+              <p className="text-xl font-bold text-green-500">
+                ₹{realPremiums.callPremium?.toFixed(2) || '-'}
+              </p>
             </div>
-          </Card>
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground mb-1">ATM Put Premium</p>
+              <p className="text-xl font-bold text-red-500">
+                ₹{realPremiums.putPremium?.toFixed(2) || '-'}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground mb-1">Call IV</p>
+              <p className="text-xl font-bold">{realPremiums.callIV?.toFixed(1) || '-'}%</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground mb-1">Put IV</p>
+              <p className="text-xl font-bold">{realPremiums.putIV?.toFixed(1) || '-'}%</p>
+            </div>
+          </div>
         )}
 
-        <Card className="p-6 bg-accent/50 mb-8">
-          <h3 className="text-xl font-semibold mb-4">30-Day Price History</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis 
-                dataKey="date" 
-                stroke="hsl(var(--muted-foreground))"
-                tick={{ fill: 'hsl(var(--muted-foreground))' }}
-              />
-              <YAxis 
-                stroke="hsl(var(--muted-foreground))"
-                tick={{ fill: 'hsl(var(--muted-foreground))' }}
-              />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '8px'
-                }}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="price" 
-                stroke="hsl(var(--primary))" 
-                strokeWidth={2}
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </Card>
-
-        {prediction.newsSentiment && (
-          <Card className="p-6 bg-accent/50 mb-8">
-            <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-primary" />
-              News Sentiment Analysis
-            </h3>
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-muted-foreground">Overall Sentiment:</span>
-                <Badge className={
-                  prediction.newsSentiment.overall === 'positive' 
-                    ? 'bg-green-500/10 text-green-500 border-green-500/20' 
-                    : prediction.newsSentiment.overall === 'negative'
-                    ? 'bg-red-500/10 text-red-500 border-red-500/20'
-                    : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
-                }>
-                  {prediction.newsSentiment.overall.toUpperCase()}
-                </Badge>
-              </div>
-              <p className="text-muted-foreground">{prediction.newsSentiment.summary}</p>
-              {prediction.newsSentiment.articles && prediction.newsSentiment.articles.length > 0 && (
-                <div className="space-y-2">
-                  <h4 className="font-semibold text-sm">Recent News Articles:</h4>
-                  {prediction.newsSentiment.articles.map((article, idx) => (
-                    <div key={idx} className="p-3 bg-background/50 rounded-lg border border-border/50">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-medium">{article.title}</p>
-                        <div className="flex gap-2 flex-shrink-0">
-                          <Badge variant="outline" className={
-                            article.sentiment === 'positive' 
-                              ? 'text-green-500' 
-                              : article.sentiment === 'negative'
-                              ? 'text-red-500'
-                              : 'text-yellow-500'
-                          }>
-                            {article.sentiment}
-                          </Badge>
-                          <Badge variant="outline" className="text-xs">
-                            {article.impact} impact
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </Card>
+        {/* Conflict Warning */}
+        {hasConflict && (
+          <Alert variant="destructive" className="mt-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Strategy-Sentiment Conflict</AlertTitle>
+            <AlertDescription>
+              News sentiment is <strong>{prediction.newsSentiment?.overall}</strong> but strategy recommends <strong>{prediction.optionType}</strong>. 
+              System has auto-corrected to align with news sentiment.
+            </AlertDescription>
+          </Alert>
         )}
 
-        <Card className="p-6 bg-accent/50 mb-8">
-          <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-primary" />
-            AI Technical Analysis
-          </h3>
-          <p className="text-muted-foreground leading-relaxed whitespace-pre-line">
-            {prediction.reasoning}
-          </p>
-        </Card>
-
-        <Card className="p-6 bg-destructive/10 border-destructive/20">
-          <h3 className="text-xl font-semibold mb-4 flex items-center gap-2 text-destructive">
-            <AlertTriangle className="h-5 w-5" />
-            Important Disclaimer
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            Options trading carries substantial risk and is not suitable for all investors. 
-            This prediction is for educational purposes only and should not be considered as financial advice. 
-            The probability of success is based on technical analysis and does not guarantee profits. 
-            Please consult with a certified financial advisor before making any investment decisions. 
-            Always understand the risks involved and only trade with money you can afford to lose.
-          </p>
-        </Card>
+        {/* Expiry Warning */}
+        {expiryInfo && expiryInfo.daysToExpiry <= 2 && !expiryInfo.isExpiryToday && (
+          <Alert className="mt-4 border-yellow-500/50 bg-yellow-500/10">
+            <Clock className="h-4 w-4 text-yellow-500" />
+            <AlertTitle className="text-yellow-500">Near Expiry Warning</AlertTitle>
+            <AlertDescription>
+              Only {expiryInfo.daysToExpiry} day{expiryInfo.daysToExpiry > 1 ? 's' : ''} until expiry. 
+              Limited time value remaining - focus on directional moves.
+            </AlertDescription>
+          </Alert>
+        )}
       </Card>
+
+      {/* Professional Tabbed Interface */}
+      <Tabs defaultValue="trade" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-6 lg:grid-cols-6">
+          <TabsTrigger value="trade" className="flex items-center gap-1 text-xs md:text-sm">
+            <Target className="h-4 w-4" />
+            <span className="hidden sm:inline">Trade</span>
+          </TabsTrigger>
+          <TabsTrigger value="chain" className="flex items-center gap-1 text-xs md:text-sm">
+            <BarChart3 className="h-4 w-4" />
+            <span className="hidden sm:inline">Option Chain</span>
+          </TabsTrigger>
+          <TabsTrigger value="greeks" className="flex items-center gap-1 text-xs md:text-sm">
+            <Gauge className="h-4 w-4" />
+            <span className="hidden sm:inline">Greeks</span>
+          </TabsTrigger>
+          <TabsTrigger value="volatility" className="flex items-center gap-1 text-xs md:text-sm">
+            <Activity className="h-4 w-4" />
+            <span className="hidden sm:inline">Volatility</span>
+          </TabsTrigger>
+          <TabsTrigger value="technical" className="flex items-center gap-1 text-xs md:text-sm">
+            <LineChart className="h-4 w-4" />
+            <span className="hidden sm:inline">Technical</span>
+          </TabsTrigger>
+          <TabsTrigger value="scenario" className="flex items-center gap-1 text-xs md:text-sm">
+            <Brain className="h-4 w-4" />
+            <span className="hidden sm:inline">Scenario</span>
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Trade Setup Tab */}
+        <TabsContent value="trade" className="space-y-6">
+          <div className="grid lg:grid-cols-2 gap-6">
+            <TradeSetupCard 
+              prediction={prediction} 
+              dataSource={dataSource}
+            />
+            
+            {/* AI Reasoning Card */}
+            <Card className="glass-strong border-border p-6">
+              <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <Brain className="h-5 w-5 text-primary" />
+                AI Analysis
+              </h3>
+              <div className="space-y-4">
+                <p className="text-muted-foreground leading-relaxed">{prediction.reasoning}</p>
+                
+                {/* News Sentiment */}
+                {prediction.newsSentiment && (
+                  <div className="space-y-3 pt-4 border-t border-border">
+                    <div className="flex items-center gap-2">
+                      <Newspaper className="h-4 w-4 text-primary" />
+                      <span className="font-semibold">News Sentiment</span>
+                      <Badge className={
+                        prediction.newsSentiment.overall === 'positive' ? 'bg-green-500' :
+                        prediction.newsSentiment.overall === 'negative' ? 'bg-red-500' : 'bg-yellow-500'
+                      }>
+                        {prediction.newsSentiment.overall}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{prediction.newsSentiment.summary}</p>
+                    
+                    {prediction.newsSentiment.articles && prediction.newsSentiment.articles.length > 0 && (
+                      <div className="space-y-2">
+                        {prediction.newsSentiment.articles.slice(0, 3).map((article, idx) => (
+                          <div key={idx} className="p-2 rounded bg-muted/30 text-xs flex items-start gap-2">
+                            {article.sentiment === 'positive' ? (
+                              <TrendingUp className="h-3 w-3 text-green-500 flex-shrink-0 mt-0.5" />
+                            ) : article.sentiment === 'negative' ? (
+                              <TrendingDown className="h-3 w-3 text-red-500 flex-shrink-0 mt-0.5" />
+                            ) : null}
+                            <span className="text-muted-foreground">{article.title}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Card>
+          </div>
+
+          {/* Price Chart */}
+          <Card className="p-6 glass-strong border-border">
+            <h3 className="text-xl font-semibold mb-4">Price History (30 Days)</h3>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsLineChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} domain={['auto', 'auto']} />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--card))', 
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px'
+                    }} 
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="price" 
+                    stroke="hsl(var(--primary))" 
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </RechartsLineChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        </TabsContent>
+
+        {/* Option Chain Tab */}
+        <TabsContent value="chain" className="space-y-6">
+          <OptionChainAnalysisCard 
+            optionsFlow={prediction.optionsFlow}
+            spotPrice={spotPrice}
+          />
+        </TabsContent>
+
+        {/* Greeks Tab */}
+        <TabsContent value="greeks" className="space-y-6">
+          <GreeksAnalysisCard 
+            greeks={prediction.greeks}
+            optionType={prediction.optionType === 'CALL' ? 'CALL' : 'PUT'}
+            daysToExpiry={expiryInfo?.daysToExpiry || 7}
+            premium={entryPremium}
+            lotSize={lotSize}
+            greeksValidation={prediction.greeksValidation}
+            positionSizing={prediction.positionSizing}
+          />
+        </TabsContent>
+
+        {/* Volatility Tab */}
+        <TabsContent value="volatility" className="space-y-6">
+          <VolatilityStudyCard 
+            ivAnalysis={ivAnalysis || {
+              ivRank: prediction.ivRank,
+              ivPercentile: prediction.ivRank,
+              level: prediction.ivRank > 70 ? 'HIGH' : prediction.ivRank > 40 ? 'MODERATE' : 'LOW',
+              strategy: prediction.ivRank > 70 ? 'Consider selling strategies' : 'Consider buying strategies'
+            }}
+            realPremiums={realPremiums ? {
+              callIV: realPremiums.callIV,
+              putIV: realPremiums.putIV
+            } : undefined}
+            technicalAnalysis={technicalAnalysis}
+            spotPrice={spotPrice}
+          />
+        </TabsContent>
+
+        {/* Technical Tab */}
+        <TabsContent value="technical" className="space-y-6">
+          <TechnicalUnderlyingCard 
+            technicalAnalysis={technicalAnalysis}
+            analysis={{
+              current: spotPrice,
+              rsi: technicalAnalysis?.rsi || 50,
+              sma20: technicalAnalysis?.sma20 || spotPrice,
+              trend: prediction.optionType === 'CALL' ? 'Bullish' : 'Bearish',
+              trendScore: prediction.technicalScore || 5
+            }}
+            pivotPoints={prediction.pivotPoints}
+            fibonacciLevels={prediction.fibonacciLevels}
+          />
+        </TabsContent>
+
+        {/* Scenario Tab */}
+        <TabsContent value="scenario" className="space-y-6">
+          <OptionsScenarioCard 
+            optionType={prediction.optionType === 'CALL' ? 'CALL' : 'PUT'}
+            spotPrice={spotPrice}
+            entryPremium={entryPremium}
+            lotSize={lotSize}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
