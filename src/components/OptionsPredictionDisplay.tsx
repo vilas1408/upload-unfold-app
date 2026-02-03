@@ -230,22 +230,22 @@ const OptionsPredictionDisplay = ({
             <div className="text-center">
               <p className="text-xs text-muted-foreground mb-1">ATM Call Premium</p>
               <p className="text-xl font-bold text-green-500">
-                ₹{realPremiums.callPremium?.toFixed(2) || '-'}
+                {typeof realPremiums.callPremium === 'number' ? `₹${realPremiums.callPremium.toFixed(2)}` : '—'}
               </p>
             </div>
             <div className="text-center">
               <p className="text-xs text-muted-foreground mb-1">ATM Put Premium</p>
               <p className="text-xl font-bold text-red-500">
-                ₹{realPremiums.putPremium?.toFixed(2) || '-'}
+                {typeof realPremiums.putPremium === 'number' ? `₹${realPremiums.putPremium.toFixed(2)}` : '—'}
               </p>
             </div>
             <div className="text-center">
               <p className="text-xs text-muted-foreground mb-1">Call IV</p>
-              <p className="text-xl font-bold">{realPremiums.callIV?.toFixed(1) || '-'}%</p>
+              <p className="text-xl font-bold">{typeof realPremiums.callIV === 'number' ? `${realPremiums.callIV.toFixed(1)}%` : '—'}</p>
             </div>
             <div className="text-center">
               <p className="text-xs text-muted-foreground mb-1">Put IV</p>
-              <p className="text-xl font-bold">{realPremiums.putIV?.toFixed(1) || '-'}%</p>
+              <p className="text-xl font-bold">{typeof realPremiums.putIV === 'number' ? `${realPremiums.putIV.toFixed(1)}%` : '—'}</p>
             </div>
           </div>
         )}
