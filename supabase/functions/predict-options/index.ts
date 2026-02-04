@@ -2302,36 +2302,82 @@ async function fetchMarketContext(symbol: string, type: 'index' | 'share') {
 }
 
 async function fetchStockData(symbol: string) {
-  try {
-    let yahooSymbol = symbol;
-    if (!symbol.includes('.') && !symbol.startsWith('^')) {
-      yahooSymbol = /^\d+$/.test(symbol) ? `${symbol}.BO` : `${symbol}.NS`;
-    }
-    
-    const endDate = Math.floor(Date.now() / 1000);
-    const startDate = endDate - (30 * 24 * 60 * 60);
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?period1=${startDate}&period2=${endDate}&interval=1d`;
-    
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Failed to fetch data');
-    
-    const data = await response.json();
-    const result = data.chart.result[0];
-    const timestamps = result.timestamp;
-    const quotes = result.indicators.quote[0];
-    
-    return timestamps.map((ts: number, i: number) => ({
-      date: new Date(ts * 1000).toISOString().split('T')[0],
-      open: quotes.open[i] || 0,
-      high: quotes.high[i] || 0,
-      low: quotes.low[i] || 0,
-      close: quotes.close[i] || 0,
-      volume: quotes.volume[i] || 0
-    })).filter((d: any) => d.close > 0);
-  } catch (error) {
-    console.error('Fetch error:', error);
-    throw error;
+  // Try multiple symbol formats for better compatibility
+  const symbolVariants = [];
+  
+  if (symbol.includes('.')) {
+    symbolVariants.push(symbol);
+  } else if (symbol.startsWith('^')) {
+    // For indices like ^NSEI, ^NSEBANK - try as-is first
+    symbolVariants.push(symbol);
+  } else {
+    // Try NSE first, then BSE
+    symbolVariants.push(`${symbol}.NS`);
+    symbolVariants.push(`${symbol}.BO`);
+    symbolVariants.push(symbol); // Try without suffix
   }
+  
+  const endDate = Math.floor(Date.now() / 1000);
+  const startDate = endDate - (100 * 24 * 60 * 60); // 100 days for better analysis
+  
+  let lastError: Error | null = null;
+  
+  for (const yahooSymbol of symbolVariants) {
+    try {
+      console.log(`Trying Yahoo Finance symbol: ${yahooSymbol}`);
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?period1=${startDate}&period2=${endDate}&interval=1d`;
+      
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+      
+      if (!response.ok) {
+        console.log(`Failed for ${yahooSymbol}: HTTP ${response.status}`);
+        continue;
+      }
+      
+      const data = await response.json();
+      
+      // Check if we have valid data
+      if (!data.chart?.result?.[0]?.timestamp) {
+        console.log(`No data for ${yahooSymbol}`);
+        continue;
+      }
+      
+      const result = data.chart.result[0];
+      const timestamps = result.timestamp;
+      const quotes = result.indicators.quote[0];
+      
+      if (!timestamps || !quotes || timestamps.length === 0) {
+        console.log(`Empty data for ${yahooSymbol}`);
+        continue;
+      }
+      
+      const historicalData = timestamps.map((ts: number, i: number) => ({
+        date: new Date(ts * 1000).toISOString().split('T')[0],
+        open: quotes.open[i] || 0,
+        high: quotes.high[i] || 0,
+        low: quotes.low[i] || 0,
+        close: quotes.close[i] || 0,
+        volume: quotes.volume[i] || 0
+      })).filter((d: any) => d.close > 0);
+      
+      if (historicalData.length >= 10) {
+        console.log(`✅ Successfully fetched ${historicalData.length} days of data for ${yahooSymbol}`);
+        return historicalData;
+      }
+      
+      console.log(`Insufficient data for ${yahooSymbol}: only ${historicalData.length} days`);
+    } catch (error) {
+      console.error(`Error fetching ${yahooSymbol}:`, error);
+      lastError = error as Error;
+    }
+  }
+  
+  // If all variants fail, throw a descriptive error
+  throw new Error(`Unable to fetch historical data for ${symbol}. This index/stock may not be available on Yahoo Finance. Please try a different symbol.`);
 }
 
 // Calculate Historical Volatility (using log returns)
