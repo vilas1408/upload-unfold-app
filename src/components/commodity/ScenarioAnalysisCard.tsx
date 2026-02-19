@@ -20,7 +20,25 @@ interface ScenarioAnalysisCardProps {
   commodityName: string;
 }
 
+const safeNum = (val: any): number | null =>
+  typeof val === 'number' && Number.isFinite(val) ? val : null;
+
+const fmtInr = (val: any, fallback = '—'): string => {
+  const n = safeNum(val);
+  return n !== null ? `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : fallback;
+};
+
+const fmtPct = (val: any, fallback = '—'): string => {
+  const n = safeNum(val);
+  return n !== null ? `${n.toFixed(1)}%` : fallback;
+};
+
 const ScenarioAnalysisCard = ({ scenarios, currentPrice, commodityName }: ScenarioAnalysisCardProps) => {
+  const price = safeNum(currentPrice) ?? 0;
+  const best = scenarios?.bestCase;
+  const base = scenarios?.baseCase;
+  const worst = scenarios?.worstCase;
+
   return (
     <Card className="p-6 bg-accent/50">
       <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
@@ -30,9 +48,7 @@ const ScenarioAnalysisCard = ({ scenarios, currentPrice, commodityName }: Scenar
 
       <div className="text-center mb-6 p-3 bg-primary/10 rounded-lg">
         <p className="text-sm text-muted-foreground">Current Spot Price</p>
-        <p className="text-3xl font-bold text-primary">
-          ₹{currentPrice.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-        </p>
+        <p className="text-3xl font-bold text-primary">{fmtInr(price)}</p>
       </div>
 
       <div className="grid md:grid-cols-3 gap-4">
@@ -44,29 +60,22 @@ const ScenarioAnalysisCard = ({ scenarios, currentPrice, commodityName }: Scenar
               <h4 className="font-semibold text-green-500">Best Case</h4>
             </div>
             <Badge className="bg-green-500/20 text-green-500 border-green-500/30">
-              {scenarios.bestCase.probability}%
+              {safeNum(best?.probability) ?? '—'}%
             </Badge>
           </div>
-          
           <div className="space-y-3">
             <div>
               <p className="text-xs text-muted-foreground">Target Price</p>
-              <p className="text-2xl font-bold text-green-500">
-                ₹{scenarios.bestCase.targetPrice.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-              </p>
-              <p className="text-sm text-green-400">
-                +{scenarios.bestCase.percentChange.toFixed(1)}%
-              </p>
+              <p className="text-2xl font-bold text-green-500">{fmtInr(best?.targetPrice)}</p>
+              <p className="text-sm text-green-400">+{fmtPct(best?.percentChange)}</p>
             </div>
-            
             <div className="pt-2 border-t border-green-500/20">
               <p className="text-xs text-muted-foreground mb-1">Catalyst</p>
-              <p className="text-sm text-foreground">{scenarios.bestCase.catalyst}</p>
+              <p className="text-sm text-foreground">{best?.catalyst || '—'}</p>
             </div>
-            
             <div className="pt-2 border-t border-green-500/20">
               <p className="text-xs text-muted-foreground mb-1">Recommendation</p>
-              <p className="text-sm font-medium text-green-400">{scenarios.bestCase.recommendation}</p>
+              <p className="text-sm font-medium text-green-400">{best?.recommendation || '—'}</p>
             </div>
           </div>
         </div>
@@ -79,29 +88,24 @@ const ScenarioAnalysisCard = ({ scenarios, currentPrice, commodityName }: Scenar
               <h4 className="font-semibold text-primary">Base Case</h4>
             </div>
             <Badge className="bg-primary/20 text-primary border-primary/30">
-              {scenarios.baseCase.probability}%
+              {safeNum(base?.probability) ?? '—'}%
             </Badge>
           </div>
-          
           <div className="space-y-3">
             <div>
               <p className="text-xs text-muted-foreground">Target Price</p>
-              <p className="text-2xl font-bold text-primary">
-                ₹{scenarios.baseCase.targetPrice.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-              </p>
-              <p className={`text-sm ${scenarios.baseCase.percentChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {scenarios.baseCase.percentChange >= 0 ? '+' : ''}{scenarios.baseCase.percentChange.toFixed(1)}%
+              <p className="text-2xl font-bold text-primary">{fmtInr(base?.targetPrice)}</p>
+              <p className={`text-sm ${(safeNum(base?.percentChange) ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {(safeNum(base?.percentChange) ?? 0) >= 0 ? '+' : ''}{fmtPct(base?.percentChange)}
               </p>
             </div>
-            
             <div className="pt-2 border-t border-primary/20">
               <p className="text-xs text-muted-foreground mb-1">Catalyst</p>
-              <p className="text-sm text-foreground">{scenarios.baseCase.catalyst}</p>
+              <p className="text-sm text-foreground">{base?.catalyst || '—'}</p>
             </div>
-            
             <div className="pt-2 border-t border-primary/20">
               <p className="text-xs text-muted-foreground mb-1">Recommendation</p>
-              <p className="text-sm font-medium text-primary">{scenarios.baseCase.recommendation}</p>
+              <p className="text-sm font-medium text-primary">{base?.recommendation || '—'}</p>
             </div>
           </div>
         </div>
@@ -114,29 +118,22 @@ const ScenarioAnalysisCard = ({ scenarios, currentPrice, commodityName }: Scenar
               <h4 className="font-semibold text-red-500">Worst Case</h4>
             </div>
             <Badge className="bg-red-500/20 text-red-500 border-red-500/30">
-              {scenarios.worstCase.probability}%
+              {safeNum(worst?.probability) ?? '—'}%
             </Badge>
           </div>
-          
           <div className="space-y-3">
             <div>
               <p className="text-xs text-muted-foreground">Target Price</p>
-              <p className="text-2xl font-bold text-red-500">
-                ₹{scenarios.worstCase.targetPrice.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-              </p>
-              <p className="text-sm text-red-400">
-                {scenarios.worstCase.percentChange.toFixed(1)}%
-              </p>
+              <p className="text-2xl font-bold text-red-500">{fmtInr(worst?.targetPrice)}</p>
+              <p className="text-sm text-red-400">{fmtPct(worst?.percentChange)}</p>
             </div>
-            
             <div className="pt-2 border-t border-red-500/20">
               <p className="text-xs text-muted-foreground mb-1">Catalyst</p>
-              <p className="text-sm text-foreground">{scenarios.worstCase.catalyst}</p>
+              <p className="text-sm text-foreground">{worst?.catalyst || '—'}</p>
             </div>
-            
             <div className="pt-2 border-t border-red-500/20">
               <p className="text-xs text-muted-foreground mb-1">Recommendation</p>
-              <p className="text-sm font-medium text-red-400">{scenarios.worstCase.recommendation}</p>
+              <p className="text-sm font-medium text-red-400">{worst?.recommendation || '—'}</p>
             </div>
           </div>
         </div>
