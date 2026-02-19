@@ -18,6 +18,14 @@ interface MacroFactorsCardProps {
   commoditySymbol: string;
 }
 
+const safeNum = (val: any): number | null => 
+  typeof val === 'number' && Number.isFinite(val) ? val : null;
+
+const fmt = (val: any, decimals = 2, fallback = '—'): string => {
+  const n = safeNum(val);
+  return n !== null ? n.toFixed(decimals) : fallback;
+};
+
 const MacroFactorsCard = ({ macro, commoditySymbol }: MacroFactorsCardProps) => {
   const getTrendIcon = (change: number) => {
     if (change > 0.1) return <TrendingUp className="h-4 w-4 text-green-500" />;
@@ -55,7 +63,17 @@ const MacroFactorsCard = ({ macro, commoditySymbol }: MacroFactorsCardProps) => 
     return { impact: 'Neutral', reason: 'Standard macro conditions' };
   };
 
-  const commodityImpact = getCommodityImpact(commoditySymbol, macro.dxy.trend, macro.vix.value);
+  const dxyVal = safeNum(macro?.dxy?.value) ?? 0;
+  const dxyChange = safeNum(macro?.dxy?.change) ?? 0;
+  const vixVal = safeNum(macro?.vix?.value) ?? 15;
+  const yieldVal = safeNum(macro?.usTreasuryYield10Y?.value) ?? 0;
+  const yieldChange = safeNum(macro?.usTreasuryYield10Y?.change) ?? 0;
+  const usdInrVal = safeNum(macro?.usdInr?.value) ?? 0;
+  const usdInrChange = safeNum(macro?.usdInr?.change) ?? 0;
+  const fedVal = safeNum(macro?.fedFundsRate?.value) ?? 0;
+  const pmiVal = safeNum(macro?.chinaPmi?.value) ?? 0;
+
+  const commodityImpact = getCommodityImpact(commoditySymbol, macro?.dxy?.trend || '', vixVal);
 
   return (
     <Card className="p-6 bg-accent/50">
@@ -90,14 +108,14 @@ const MacroFactorsCard = ({ macro, commoditySymbol }: MacroFactorsCardProps) => 
             <DollarSign className="h-4 w-4 text-primary" />
             <span className="text-xs text-muted-foreground">US Dollar Index</span>
           </div>
-          <p className="text-2xl font-bold">{macro.dxy.value.toFixed(2)}</p>
+          <p className="text-2xl font-bold">{fmt(dxyVal)}</p>
           <div className="flex items-center gap-1 mt-1">
-            {getTrendIcon(macro.dxy.change)}
-            <span className={`text-xs ${macro.dxy.change > 0 ? 'text-green-500' : 'text-red-500'}`}>
-              {macro.dxy.change > 0 ? '+' : ''}{macro.dxy.change.toFixed(2)}%
+            {getTrendIcon(dxyChange)}
+            <span className={`text-xs ${dxyChange > 0 ? 'text-green-500' : 'text-red-500'}`}>
+              {dxyChange > 0 ? '+' : ''}{fmt(dxyChange)}%
             </span>
           </div>
-          <Badge variant="outline" className="mt-2 text-xs">{macro.dxy.trend}</Badge>
+          <Badge variant="outline" className="mt-2 text-xs">{macro?.dxy?.trend || '—'}</Badge>
         </div>
 
         {/* US 10Y Treasury Yield */}
@@ -106,26 +124,26 @@ const MacroFactorsCard = ({ macro, commoditySymbol }: MacroFactorsCardProps) => 
             <Percent className="h-4 w-4 text-primary" />
             <span className="text-xs text-muted-foreground">US 10Y Yield</span>
           </div>
-          <p className="text-2xl font-bold">{macro.usTreasuryYield10Y.value.toFixed(2)}%</p>
+          <p className="text-2xl font-bold">{fmt(yieldVal)}%</p>
           <div className="flex items-center gap-1 mt-1">
-            {getTrendIcon(macro.usTreasuryYield10Y.change)}
-            <span className={`text-xs ${macro.usTreasuryYield10Y.change > 0 ? 'text-red-500' : 'text-green-500'}`}>
-              {macro.usTreasuryYield10Y.change > 0 ? '+' : ''}{macro.usTreasuryYield10Y.change.toFixed(2)}%
+            {getTrendIcon(yieldChange)}
+            <span className={`text-xs ${yieldChange > 0 ? 'text-red-500' : 'text-green-500'}`}>
+              {yieldChange > 0 ? '+' : ''}{fmt(yieldChange)}%
             </span>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            {macro.usTreasuryYield10Y.value > 4.5 ? 'Elevated yields' : 'Normal range'}
+            {yieldVal > 4.5 ? 'Elevated yields' : 'Normal range'}
           </p>
         </div>
 
         {/* VIX */}
-        <div className={`p-4 rounded-lg border ${getVixColor(macro.vix.value)}`}>
+        <div className={`p-4 rounded-lg border ${getVixColor(vixVal)}`}>
           <div className="flex items-center gap-2 mb-2">
             <Activity className="h-4 w-4" />
             <span className="text-xs opacity-80">VIX (Fear Index)</span>
           </div>
-          <p className="text-2xl font-bold">{macro.vix.value.toFixed(2)}</p>
-          <p className="text-xs mt-2 opacity-80">{macro.vix.level}</p>
+          <p className="text-2xl font-bold">{fmt(vixVal)}</p>
+          <p className="text-xs mt-2 opacity-80">{macro?.vix?.level || '—'}</p>
         </div>
 
         {/* USD/INR */}
@@ -133,14 +151,14 @@ const MacroFactorsCard = ({ macro, commoditySymbol }: MacroFactorsCardProps) => 
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xs text-muted-foreground">USD/INR</span>
           </div>
-          <p className="text-2xl font-bold">₹{macro.usdInr.value.toFixed(2)}</p>
+          <p className="text-2xl font-bold">₹{fmt(usdInrVal)}</p>
           <div className="flex items-center gap-1 mt-1">
-            {getTrendIcon(macro.usdInr.change)}
-            <span className={`text-xs ${macro.usdInr.change > 0 ? 'text-red-500' : 'text-green-500'}`}>
-              {macro.usdInr.change > 0 ? '+' : ''}{macro.usdInr.change.toFixed(2)}%
+            {getTrendIcon(usdInrChange)}
+            <span className={`text-xs ${usdInrChange > 0 ? 'text-red-500' : 'text-green-500'}`}>
+              {usdInrChange > 0 ? '+' : ''}{fmt(usdInrChange)}%
             </span>
           </div>
-          <Badge variant="outline" className="mt-2 text-xs">{macro.usdInr.trend}</Badge>
+          <Badge variant="outline" className="mt-2 text-xs">{macro?.usdInr?.trend || '—'}</Badge>
         </div>
 
         {/* Fed Outlook */}
@@ -148,8 +166,8 @@ const MacroFactorsCard = ({ macro, commoditySymbol }: MacroFactorsCardProps) => 
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xs text-muted-foreground">Fed Funds Rate</span>
           </div>
-          <p className="text-2xl font-bold">{macro.fedFundsRate.value.toFixed(2)}%</p>
-          <p className="text-xs mt-2 text-muted-foreground">{macro.fedFundsRate.outlook}</p>
+          <p className="text-2xl font-bold">{fmt(fedVal)}%</p>
+          <p className="text-xs mt-2 text-muted-foreground">{macro?.fedFundsRate?.outlook || '—'}</p>
         </div>
 
         {/* China PMI */}
@@ -157,25 +175,25 @@ const MacroFactorsCard = ({ macro, commoditySymbol }: MacroFactorsCardProps) => 
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xs text-muted-foreground">China PMI</span>
           </div>
-          <p className={`text-2xl font-bold ${macro.chinaPmi.value >= 50 ? 'text-green-500' : 'text-red-500'}`}>
-            {macro.chinaPmi.value.toFixed(1)}
+          <p className={`text-2xl font-bold ${pmiVal >= 50 ? 'text-green-500' : 'text-red-500'}`}>
+            {fmt(pmiVal, 1)}
           </p>
-          <p className="text-xs mt-2 text-muted-foreground">{macro.chinaPmi.trend}</p>
+          <p className="text-xs mt-2 text-muted-foreground">{macro?.chinaPmi?.trend || '—'}</p>
           <Badge variant="outline" className="mt-1 text-xs">
-            {macro.chinaPmi.value >= 50 ? 'Expansion' : 'Contraction'}
+            {pmiVal >= 50 ? 'Expansion' : 'Contraction'}
           </Badge>
         </div>
       </div>
 
       {/* Commodity-Specific Insights */}
       <div className="mt-4 grid md:grid-cols-2 gap-4">
-        {macro.goldDemand && (
+        {macro?.goldDemand && (
           <div className="p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
             <p className="text-xs text-muted-foreground mb-1">Gold/Silver Demand Assessment</p>
             <p className="text-sm font-semibold text-yellow-500">{macro.goldDemand}</p>
           </div>
         )}
-        {macro.oilSupply && (
+        {macro?.oilSupply && (
           <div className="p-3 bg-green-500/10 rounded-lg border border-green-500/20">
             <p className="text-xs text-muted-foreground mb-1">Oil Supply Assessment</p>
             <p className="text-sm font-semibold text-green-500">{macro.oilSupply}</p>

@@ -72,6 +72,14 @@ interface CommodityPredictionDisplayProps {
   termStructure?: any;
 }
 
+const safeNum = (val: any): number | null =>
+  typeof val === 'number' && Number.isFinite(val) ? val : null;
+
+const fmtInr = (val: any, fallback = '—'): string => {
+  const n = safeNum(val);
+  return n !== null ? `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : fallback;
+};
+
 const CommodityPredictionDisplay = ({ 
   commodity, 
   prediction, 
@@ -175,12 +183,12 @@ const CommodityPredictionDisplay = ({
             <Card className="p-4 bg-primary/10 border-primary/20">
               <p className="text-xs text-muted-foreground mb-1">Spot Price</p>
               <p className="text-2xl font-bold text-primary">
-                ₹{prediction.entryPrice.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                {fmtInr(prediction.entryPrice)}
               </p>
             </Card>
             <Card className="p-4 bg-accent/50">
               <p className="text-xs text-muted-foreground mb-1">Technical Score</p>
-              <p className="text-2xl font-bold">{prediction.technicalScore}/100</p>
+              <p className="text-2xl font-bold">{safeNum(prediction.technicalScore) ?? '—'}/100</p>
             </Card>
             <Card className="p-4 bg-accent/50">
               <p className="text-xs text-muted-foreground mb-1">Days to Expiry</p>
@@ -188,7 +196,7 @@ const CommodityPredictionDisplay = ({
             </Card>
             <Card className="p-4 bg-accent/50">
               <p className="text-xs text-muted-foreground mb-1">IV Rank</p>
-              <p className="text-2xl font-bold">{prediction.ivRank}%</p>
+              <p className="text-2xl font-bold">{safeNum(prediction.ivRank) ?? '—'}%</p>
             </Card>
           </div>
 
@@ -286,7 +294,7 @@ const CommodityPredictionDisplay = ({
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground mb-1">Strike</p>
-                        <p className="text-lg font-bold">₹{prediction.strikePrice.toLocaleString('en-IN')}</p>
+                        <p className="text-lg font-bold">{fmtInr(prediction.strikePrice)}</p>
                       </div>
                       {prediction.expiryDate && (
                         <div className="col-span-2">
@@ -348,13 +356,13 @@ const CommodityPredictionDisplay = ({
                       <div className="p-3 bg-green-500/10 rounded-lg border border-green-500/20">
                         <p className="text-xs text-muted-foreground mb-1">Max Gain</p>
                         <p className="text-xl font-bold text-green-500">
-                          ₹{prediction.maxGain.toLocaleString('en-IN')}
+                          {fmtInr(prediction.maxGain)}
                         </p>
                       </div>
                       <div className="p-3 bg-red-500/10 rounded-lg border border-red-500/20">
                         <p className="text-xs text-muted-foreground mb-1">Max Loss</p>
                         <p className="text-xl font-bold text-red-500">
-                          ₹{prediction.maxLoss.toLocaleString('en-IN')}
+                          {fmtInr(prediction.maxLoss)}
                         </p>
                       </div>
                     </div>
@@ -381,19 +389,19 @@ const CommodityPredictionDisplay = ({
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <p className="text-xs text-muted-foreground">Delta</p>
-                          <p className="font-semibold">{prediction.greeks.delta.toFixed(2)}</p>
+                          <p className="font-semibold">{safeNum(prediction.greeks?.delta) !== null ? prediction.greeks.delta.toFixed(2) : '—'}</p>
                         </div>
                         <div>
                           <p className="text-xs text-muted-foreground">Gamma</p>
-                          <p className="font-semibold">{prediction.greeks.gamma.toFixed(4)}</p>
+                          <p className="font-semibold">{safeNum(prediction.greeks?.gamma) !== null ? prediction.greeks.gamma.toFixed(4) : '—'}</p>
                         </div>
                         <div>
                           <p className="text-xs text-muted-foreground">Theta</p>
-                          <p className="font-semibold text-red-500">-{Math.abs(prediction.greeks.theta).toFixed(2)}</p>
+                          <p className="font-semibold text-red-500">{safeNum(prediction.greeks?.theta) !== null ? `-${Math.abs(prediction.greeks.theta).toFixed(2)}` : '—'}</p>
                         </div>
                         <div>
                           <p className="text-xs text-muted-foreground">Vega</p>
-                          <p className="font-semibold">{prediction.greeks.vega.toFixed(2)}</p>
+                          <p className="font-semibold">{safeNum(prediction.greeks?.vega) !== null ? prediction.greeks.vega.toFixed(2) : '—'}</p>
                         </div>
                       </div>
                     </div>
@@ -509,7 +517,7 @@ const CommodityPredictionDisplay = ({
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground mb-1">Strike</p>
-                    <p className="text-lg font-bold">₹{prediction.strikePrice.toLocaleString('en-IN')}</p>
+                    <p className="text-lg font-bold">{fmtInr(prediction.strikePrice)}</p>
                   </div>
                 </div>
               </div>
@@ -524,13 +532,13 @@ const CommodityPredictionDisplay = ({
                 <div className="p-3 bg-green-500/10 rounded-lg border border-green-500/20">
                   <p className="text-xs text-muted-foreground mb-1">Max Gain</p>
                   <p className="text-xl font-bold text-green-500">
-                    ₹{prediction.maxGain.toLocaleString('en-IN')}
+                    {fmtInr(prediction.maxGain)}
                   </p>
                 </div>
                 <div className="p-3 bg-red-500/10 rounded-lg border border-red-500/20">
                   <p className="text-xs text-muted-foreground mb-1">Max Loss</p>
                   <p className="text-xl font-bold text-red-500">
-                    ₹{prediction.maxLoss.toLocaleString('en-IN')}
+                    {fmtInr(prediction.maxLoss)}
                   </p>
                 </div>
               </div>

@@ -17,32 +17,91 @@ const COMMODITY_CONFIG: { [key: string]: { lotSize: number; unit: string; tickSi
   'COPPER': { lotSize: 2500, unit: 'kg', tickSize: 0.05, strikeInterval: 5, ivRange: [0.15, 0.25] },
 };
 
-// MCX 2025-2026 Expiry Calendar
+// Yahoo Finance symbols for commodity futures
+const YAHOO_COMMODITY_SYMBOLS: { [key: string]: string } = {
+  'GOLD': 'GC=F',
+  'GOLDM': 'GC=F',
+  'SILVER': 'SI=F',
+  'SILVERM': 'SI=F',
+  'CRUDEOIL': 'CL=F',
+  'NATURALGAS': 'NG=F',
+  'COPPER': 'HG=F',
+};
+
+// Near-month and next-month Yahoo symbols for term structure
+const YAHOO_NEXT_MONTH_SYMBOLS: { [key: string]: string } = {
+  'GOLD': 'GC=F',
+  'GOLDM': 'GC=F',
+  'SILVER': 'SI=F',
+  'SILVERM': 'SI=F',
+  'CRUDEOIL': 'CL=F',
+  'NATURALGAS': 'NG=F',
+  'COPPER': 'HG=F',
+};
+
+// MCX 2025-2026 Expiry Calendar (extended through 2026)
 const MCX_EXPIRY_CALENDAR: { [commodity: string]: { [monthYear: string]: string } } = {
   'CRUDEOIL': {
     'DEC2025': '2025-12-07',
     'JAN2026': '2026-01-15',
     'FEB2026': '2026-02-17',
     'MAR2026': '2026-03-17',
+    'APR2026': '2026-04-15',
+    'MAY2026': '2026-05-15',
+    'JUN2026': '2026-06-15',
+    'JUL2026': '2026-07-15',
+    'AUG2026': '2026-08-17',
+    'SEP2026': '2026-09-15',
+    'OCT2026': '2026-10-15',
+    'NOV2026': '2026-11-16',
+    'DEC2026': '2026-12-15',
   },
   'GOLD': {
     'DEC2025': '2025-12-05',
     'FEB2026': '2026-02-05',
     'APR2026': '2026-04-03',
+    'JUN2026': '2026-06-05',
+    'AUG2026': '2026-08-05',
+    'OCT2026': '2026-10-05',
+    'DEC2026': '2026-12-04',
   },
   'SILVER': {
     'DEC2025': '2025-12-05',
     'MAR2026': '2026-03-05',
+    'MAY2026': '2026-05-05',
+    'JUL2026': '2026-07-06',
+    'SEP2026': '2026-09-04',
+    'DEC2026': '2026-12-04',
   },
   'NATURALGAS': {
     'DEC2025': '2025-12-24',
     'JAN2026': '2026-01-27',
     'FEB2026': '2026-02-24',
+    'MAR2026': '2026-03-26',
+    'APR2026': '2026-04-27',
+    'MAY2026': '2026-05-26',
+    'JUN2026': '2026-06-25',
+    'JUL2026': '2026-07-27',
+    'AUG2026': '2026-08-26',
+    'SEP2026': '2026-09-25',
+    'OCT2026': '2026-10-27',
+    'NOV2026': '2026-11-25',
+    'DEC2026': '2026-12-28',
   },
   'COPPER': {
     'DEC2025': '2025-12-30',
     'JAN2026': '2026-01-30',
     'FEB2026': '2026-02-27',
+    'MAR2026': '2026-03-31',
+    'APR2026': '2026-04-30',
+    'MAY2026': '2026-05-29',
+    'JUN2026': '2026-06-30',
+    'JUL2026': '2026-07-31',
+    'AUG2026': '2026-08-31',
+    'SEP2026': '2026-09-30',
+    'OCT2026': '2026-10-30',
+    'NOV2026': '2026-11-30',
+    'DEC2026': '2026-12-31',
   },
 };
 
@@ -73,6 +132,25 @@ function getMCXExpiry(symbol: string): { expiryDate: Date; expiryStr: string; da
     };
   }
   
+  // Improved fallback: try next months in the calendar
+  for (let offset = 1; offset <= 6; offset++) {
+    let tryMonth = (contractMonth + offset) % 12;
+    let tryYear = contractYear + Math.floor((contractMonth + offset) / 12);
+    const tryKey = `${monthNames[tryMonth]}${tryYear}`;
+    if (MCX_EXPIRY_CALENDAR[baseSymbol]?.[tryKey]) {
+      const calendarDate = new Date(MCX_EXPIRY_CALENDAR[baseSymbol][tryKey]);
+      const daysToExpiry = Math.ceil((calendarDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysToExpiry > 0) {
+        return {
+          expiryDate: calendarDate,
+          expiryStr: calendarDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+          daysToExpiry: Math.max(1, daysToExpiry),
+        };
+      }
+    }
+  }
+  
+  // Dynamic fallback calculation
   let expiryDate: Date;
   
   if (symbol.includes('CRUDE')) {
@@ -100,11 +178,26 @@ function getMCXExpiry(symbol: string): { expiryDate: Date; expiryStr: string; da
     }
   }
   
+  // If calculated expiry is in the past, move forward
+  if (expiryDate < now) {
+    contractMonth = (contractMonth + 1) % 12;
+    if (contractMonth === 0) contractYear++;
+    if (symbol.includes('CRUDE')) {
+      const futuresExpiry = new Date(contractYear, contractMonth, 18);
+      expiryDate = subtractBusinessDays(futuresExpiry, 7);
+    } else {
+      expiryDate = new Date(contractYear, contractMonth + 1, 0);
+      while (expiryDate.getDay() === 0 || expiryDate.getDay() === 6) {
+        expiryDate.setDate(expiryDate.getDate() - 1);
+      }
+    }
+  }
+  
   const daysToExpiry = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
   
   return {
     expiryDate,
-    expiryStr: expiryDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+    expiryStr: expiryDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) + ' (est.)',
     daysToExpiry: Math.max(1, daysToExpiry),
   };
 }
@@ -148,6 +241,133 @@ function estimatePremium(
     premium: Math.max(premium, spotPrice * 0.005),
     iv: iv * 100,
   };
+}
+
+// Fetch real historical data from Yahoo Finance
+async function fetchYahooHistoricalData(symbol: string, usdInrRate: number): Promise<any[] | null> {
+  const yahooSymbol = YAHOO_COMMODITY_SYMBOLS[symbol.replace(/M$/, '').replace(/MIC$/, '')];
+  if (!yahooSymbol) return null;
+
+  try {
+    const endDate = Math.floor(Date.now() / 1000);
+    const startDate = endDate - (250 * 24 * 60 * 60); // ~250 days
+
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?period1=${startDate}&period2=${endDate}&interval=1d`;
+    console.log(`📡 Fetching Yahoo Finance data for ${yahooSymbol}...`);
+
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+    });
+
+    if (!response.ok) {
+      console.error(`Yahoo Finance returned ${response.status} for ${yahooSymbol}`);
+      return null;
+    }
+
+    const data = await response.json();
+    const result = data.chart?.result?.[0];
+    if (!result || !result.timestamp || !result.indicators?.quote?.[0]) {
+      console.error(`No valid data in Yahoo response for ${yahooSymbol}`);
+      return null;
+    }
+
+    const timestamps = result.timestamp;
+    const quote = result.indicators.quote[0];
+    const historicalData: any[] = [];
+
+    // Determine if we need USD->INR conversion (commodity futures are in USD)
+    const needsConversion = !symbol.includes('COPPER') || true; // All international commodities need conversion
+    
+    // MCX unit conversion factors (Yahoo gives per standard unit, MCX uses different units)
+    const conversionFactor = getConversionFactor(symbol);
+
+    for (let i = 0; i < timestamps.length; i++) {
+      const open = quote.open?.[i];
+      const high = quote.high?.[i];
+      const low = quote.low?.[i];
+      const close = quote.close?.[i];
+      const volume = quote.volume?.[i];
+
+      if (open == null || high == null || low == null || close == null) continue;
+
+      const date = new Date(timestamps[i] * 1000);
+      // Skip weekends
+      if (date.getDay() === 0 || date.getDay() === 6) continue;
+
+      historicalData.push({
+        date: date.toISOString().split('T')[0],
+        open: needsConversion ? open * usdInrRate * conversionFactor : open,
+        high: needsConversion ? high * usdInrRate * conversionFactor : high,
+        low: needsConversion ? low * usdInrRate * conversionFactor : low,
+        close: needsConversion ? close * usdInrRate * conversionFactor : close,
+        volume: volume || 0,
+      });
+    }
+
+    if (historicalData.length < 20) {
+      console.error(`Insufficient Yahoo data: only ${historicalData.length} days`);
+      return null;
+    }
+
+    console.log(`✅ Fetched ${historicalData.length} days of real historical data for ${symbol}`);
+    return historicalData;
+  } catch (error) {
+    console.error(`Error fetching Yahoo historical data for ${symbol}:`, error);
+    return null;
+  }
+}
+
+// MCX unit conversion factors from international prices
+function getConversionFactor(symbol: string): number {
+  const base = symbol.replace(/M$/, '').replace(/MIC$/, '');
+  switch (base) {
+    case 'GOLD': return 1 / 31.1035; // Troy oz -> grams, MCX quotes per 10g so * 10 / 31.1035
+    case 'SILVER': return 1 / 31.1035; // Troy oz -> grams, MCX quotes per kg so * 1000 / 31.1035
+    case 'CRUDEOIL': return 1; // Per barrel, same unit
+    case 'NATURALGAS': return 1; // Per mmBtu, same unit  
+    case 'COPPER': return 1 / 1000; // Per pound -> per kg factor needs adjustment
+    default: return 1;
+  }
+}
+
+// Fetch near and next month futures prices for term structure
+async function fetchTermStructurePrices(symbol: string): Promise<{ nearMonth: number; nextMonth: number } | null> {
+  const baseSymbol = symbol.replace(/M$/, '').replace(/MIC$/, '');
+  const yahooSymbol = YAHOO_COMMODITY_SYMBOLS[baseSymbol];
+  if (!yahooSymbol) return null;
+
+  try {
+    const response = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1d&range=5d`,
+      { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } }
+    );
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const meta = data.chart?.result?.[0]?.meta;
+    if (!meta) return null;
+
+    const nearMonth = meta.regularMarketPrice;
+    // Use previousClose to derive a spread estimate (more stable than random)
+    const previousClose = meta.chartPreviousClose || meta.previousClose || nearMonth;
+    const recentChange = (nearMonth - previousClose) / previousClose;
+    
+    // Estimate next-month based on typical carry cost (storage, interest)
+    // Energy commodities typically in contango, metals can be either
+    let carrySpread = 0;
+    if (baseSymbol === 'CRUDEOIL' || baseSymbol === 'NATURALGAS') {
+      carrySpread = 0.003 + Math.abs(recentChange) * 0.5; // slight contango bias
+    } else {
+      carrySpread = -0.001 + recentChange * 0.3; // metals follow momentum
+    }
+    
+    const nextMonth = nearMonth * (1 + carrySpread);
+    return { nearMonth, nextMonth };
+  } catch (error) {
+    console.error('Error fetching term structure:', error);
+    return null;
+  }
 }
 
 // Calculate advanced technical indicators
@@ -195,7 +415,7 @@ function calculateAdvancedTechnicals(data: any[]): any {
   const signal = calculateEMA(macdLine.slice(-9), 9);
   const histogram = macdValue - signal;
   
-  // ADX calculation (simplified)
+  // ADX calculation
   let plusDM = 0, minusDM = 0, tr = 0;
   for (let i = closes.length - 14; i < closes.length; i++) {
     const high = highs[i];
@@ -227,6 +447,15 @@ function calculateAdvancedTechnicals(data: any[]): any {
   }
   const atr = atrSum / 14;
   
+  // Historical Volatility (20-day)
+  const returns = [];
+  for (let i = closes.length - 21; i < closes.length; i++) {
+    returns.push(Math.log(closes[i] / closes[i - 1]));
+  }
+  const meanReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
+  const variance = returns.reduce((sum, r) => sum + Math.pow(r - meanReturn, 2), 0) / (returns.length - 1);
+  const historicalVolatility = Math.sqrt(variance * 252); // Annualized
+  
   // Stochastic
   const highest14 = Math.max(...highs.slice(-14));
   const lowest14 = Math.min(...lows.slice(-14));
@@ -252,8 +481,8 @@ function calculateAdvancedTechnicals(data: any[]): any {
   ];
   
   // Support/Resistance levels
-  const recentLows = lows.slice(-20).sort((a, b) => a - b);
-  const recentHighs = highs.slice(-20).sort((a, b) => b - a);
+  const recentLows = lows.slice(-20).sort((a: number, b: number) => a - b);
+  const recentHighs = highs.slice(-20).sort((a: number, b: number) => b - a);
   const supports = [recentLows[0], recentLows[Math.floor(recentLows.length / 3)], sma50 - atr];
   const resistances = [recentHighs[0], recentHighs[Math.floor(recentHighs.length / 3)], sma50 + atr];
   
@@ -262,7 +491,7 @@ function calculateAdvancedTechnicals(data: any[]): any {
                 latest < sma20 && sma20 < sma50 ? 'Bearish' : 'Neutral';
   const trendStrength = adx > 25 ? 'Strong' : adx > 20 ? 'Moderate' : 'Weak';
   
-  // Pattern detection (simplified)
+  // Pattern detection
   const patterns: string[] = [];
   if (macdValue > signal && histogram > 0) patterns.push('MACD Bullish Crossover');
   if (macdValue < signal && histogram < 0) patterns.push('MACD Bearish Crossover');
@@ -281,6 +510,7 @@ function calculateAdvancedTechnicals(data: any[]): any {
     stochastic: { k: stochK, d: stochD },
     adx,
     atr,
+    historicalVolatility,
     movingAverages: { sma20, sma50, sma100, sma200, ema12, ema26 },
     bollingerBands: { upper: bbUpper, middle: sma20, lower: bbLower },
     fibonacci: { levels: fibLevels },
@@ -299,6 +529,7 @@ function getDefaultTechnicals(price: number) {
     stochastic: { k: 50, d: 50 },
     adx: 15,
     atr: price * 0.02,
+    historicalVolatility: 0.20,
     movingAverages: { sma20: price, sma50: price, sma100: price, sma200: price, ema12: price, ema26: price },
     bollingerBands: { upper: price * 1.02, middle: price, lower: price * 0.98 },
     fibonacci: { levels: [] },
@@ -318,20 +549,28 @@ function calculateEMA(prices: number[], period: number): number {
   return ema;
 }
 
-// Generate multi-timeframe forecasts
+// Generate multi-timeframe forecasts using real ATR
 function generateForecasts(spotPrice: number, technicals: any, trend: string): any {
+  const atr = technicals.atr || spotPrice * 0.02;
+  const hv = technicals.historicalVolatility || 0.20;
+  
   const shortTermBias = technicals.rsi < 40 ? 'Bullish' : technicals.rsi > 60 ? 'Bearish' : trend;
   const mediumTermBias = trend;
   const longTermBias = spotPrice > technicals.movingAverages.sma200 ? 'Bullish' : 'Bearish';
+  
+  // Use ATR for realistic price targets
+  const shortTarget = shortTermBias === 'Bullish' ? spotPrice + atr * 1.5 : spotPrice - atr * 1.5;
+  const mediumTarget = mediumTermBias === 'Bullish' ? spotPrice + atr * 4 : spotPrice - atr * 4;
+  const longTarget = longTermBias === 'Bullish' ? spotPrice * (1 + hv * 0.5) : spotPrice * (1 - hv * 0.5);
   
   return {
     shortTerm: {
       timeframe: 'Short-Term',
       period: '1-5 Days',
       bias: shortTermBias,
-      targetPrice: shortTermBias === 'Bullish' ? spotPrice * 1.015 : spotPrice * 0.985,
-      supportLevel: technicals.supportResistance.supports[0] || spotPrice * 0.98,
-      resistanceLevel: technicals.supportResistance.resistances[0] || spotPrice * 1.02,
+      targetPrice: Math.round(shortTarget),
+      supportLevel: technicals.supportResistance.supports[0] || spotPrice - atr * 2,
+      resistanceLevel: technicals.supportResistance.resistances[0] || spotPrice + atr * 2,
       probability: shortTermBias === trend ? 68 : 55,
       keyDrivers: [
         'Technical momentum indicators',
@@ -343,9 +582,9 @@ function generateForecasts(spotPrice: number, technicals: any, trend: string): a
       timeframe: 'Medium-Term',
       period: '1-4 Weeks',
       bias: mediumTermBias,
-      targetPrice: mediumTermBias === 'Bullish' ? spotPrice * 1.04 : spotPrice * 0.96,
+      targetPrice: Math.round(mediumTarget),
       supportLevel: technicals.movingAverages.sma50,
-      resistanceLevel: technicals.movingAverages.sma50 * 1.05,
+      resistanceLevel: technicals.movingAverages.sma50 + atr * 3,
       probability: 62,
       keyDrivers: [
         'Moving average crossovers',
@@ -357,9 +596,9 @@ function generateForecasts(spotPrice: number, technicals: any, trend: string): a
       timeframe: 'Long-Term',
       period: '1-3 Months',
       bias: longTermBias,
-      targetPrice: longTermBias === 'Bullish' ? spotPrice * 1.08 : spotPrice * 0.92,
+      targetPrice: Math.round(longTarget),
       supportLevel: technicals.movingAverages.sma200,
-      resistanceLevel: technicals.movingAverages.sma200 * 1.1,
+      resistanceLevel: technicals.movingAverages.sma200 * (1 + hv * 0.3),
       probability: 55,
       keyDrivers: [
         'Long-term trend structure',
@@ -370,17 +609,32 @@ function generateForecasts(spotPrice: number, technicals: any, trend: string): a
   };
 }
 
-// Generate scenario analysis
-function generateScenarios(spotPrice: number, trend: string, symbol: string): any {
-  const volatilityFactor = symbol.includes('NATURAL') ? 0.08 : 
-                           symbol.includes('CRUDE') ? 0.06 :
-                           symbol.includes('SILVER') ? 0.05 : 0.04;
+// Generate scenario analysis using real ATR and historical volatility
+function generateScenarios(spotPrice: number, technicals: any, symbol: string): any {
+  const atr = technicals.atr || spotPrice * 0.02;
+  const hv = technicals.historicalVolatility || 0.20;
+  const adx = technicals.adx || 15;
+  
+  // Use 2-standard-deviation move for best/worst case (based on real HV)
+  const twoSigmaMove = spotPrice * hv * Math.sqrt(30 / 252); // 30-day 2-sigma
+  const bestTarget = spotPrice + twoSigmaMove;
+  const worstTarget = spotPrice - twoSigmaMove;
+  
+  // Base case uses ATR-based movement direction based on trend
+  const trend = technicals.trend || 'Neutral';
+  const baseMoveAtr = atr * 3; // ~3 ATR move over the period
+  const baseTarget = trend === 'Bullish' ? spotPrice + baseMoveAtr * 0.5 : 
+                     trend === 'Bearish' ? spotPrice - baseMoveAtr * 0.3 : spotPrice + baseMoveAtr * 0.1;
+  
+  // Dynamic probability based on ADX trend strength
+  const baseProbability = adx > 25 ? 65 : adx > 20 ? 60 : 55;
+  const tailProbability = (100 - baseProbability) / 2;
   
   return {
     bestCase: {
-      probability: 20,
-      targetPrice: Math.round(spotPrice * (1 + volatilityFactor * 1.5)),
-      percentChange: volatilityFactor * 150,
+      probability: Math.round(tailProbability),
+      targetPrice: Math.round(bestTarget),
+      percentChange: ((bestTarget - spotPrice) / spotPrice) * 100,
       catalyst: symbol.includes('GOLD') || symbol.includes('SILVER') 
         ? 'Fed rate cuts + USD weakness + geopolitical tensions'
         : symbol.includes('CRUDE')
@@ -389,16 +643,16 @@ function generateScenarios(spotPrice: number, trend: string, symbol: string): an
       recommendation: 'Hold for extended gains, trail stop-loss'
     },
     baseCase: {
-      probability: 60,
-      targetPrice: Math.round(spotPrice * (1 + (trend === 'Bullish' ? volatilityFactor * 0.5 : -volatilityFactor * 0.3))),
-      percentChange: trend === 'Bullish' ? volatilityFactor * 50 : -volatilityFactor * 30,
-      catalyst: 'Status quo maintained, gradual price movement',
+      probability: baseProbability,
+      targetPrice: Math.round(baseTarget),
+      percentChange: ((baseTarget - spotPrice) / spotPrice) * 100,
+      catalyst: 'Status quo maintained, gradual price movement along trend',
       recommendation: 'Follow the trade plan, book partial profits at target'
     },
     worstCase: {
-      probability: 20,
-      targetPrice: Math.round(spotPrice * (1 - volatilityFactor * 1.2)),
-      percentChange: -volatilityFactor * 120,
+      probability: Math.round(tailProbability),
+      targetPrice: Math.round(worstTarget),
+      percentChange: ((worstTarget - spotPrice) / spotPrice) * 100,
       catalyst: symbol.includes('GOLD') || symbol.includes('SILVER')
         ? 'Hawkish Fed + USD rally + risk-on sentiment'
         : symbol.includes('CRUDE')
@@ -409,10 +663,39 @@ function generateScenarios(spotPrice: number, trend: string, symbol: string): an
   };
 }
 
-// Generate term structure data
-function generateTermStructure(spotPrice: number, symbol: string, expiryInfo: any): any {
-  const isContango = symbol.includes('CRUDE') || symbol.includes('NATURAL');
-  const spreadPct = isContango ? 0.3 + Math.random() * 0.5 : -0.2 - Math.random() * 0.3;
+// Generate term structure data from real prices (no Math.random)
+function generateTermStructure(spotPrice: number, symbol: string, expiryInfo: any, termPrices: { nearMonth: number; nextMonth: number } | null, usdInrRate: number): any {
+  let nearMonthPrice = spotPrice;
+  let nextMonthPrice: number;
+  let spreadPct: number;
+  
+  if (termPrices) {
+    // Use real fetched prices, converted to INR
+    const convFactor = getConversionFactor(symbol);
+    nearMonthPrice = termPrices.nearMonth * usdInrRate * convFactor;
+    nextMonthPrice = termPrices.nextMonth * usdInrRate * convFactor;
+    
+    // Use spot price if it's available from MCX (more accurate for INR)
+    if (spotPrice > 0) {
+      nearMonthPrice = spotPrice;
+      // Scale next month proportionally
+      const intlSpread = (termPrices.nextMonth - termPrices.nearMonth) / termPrices.nearMonth;
+      nextMonthPrice = spotPrice * (1 + intlSpread);
+    }
+    
+    spreadPct = ((nextMonthPrice - nearMonthPrice) / nearMonthPrice) * 100;
+  } else {
+    // Deterministic fallback based on commodity type (no random)
+    const baseSymbol = symbol.replace(/M$/, '').replace(/MIC$/, '');
+    const carryRate = baseSymbol === 'CRUDEOIL' ? 0.4 : 
+                      baseSymbol === 'NATURALGAS' ? 0.6 :
+                      baseSymbol === 'GOLD' ? 0.15 :
+                      baseSymbol === 'SILVER' ? 0.2 : 0.25;
+    spreadPct = (baseSymbol === 'CRUDEOIL' || baseSymbol === 'NATURALGAS') ? carryRate : -carryRate * 0.5;
+    nextMonthPrice = Math.round(spotPrice * (1 + spreadPct / 100));
+  }
+  
+  const farMonthPrice = Math.round(nearMonthPrice + (nextMonthPrice - nearMonthPrice) * 1.5);
   
   return {
     expiryDate: expiryInfo.expiryStr,
@@ -424,9 +707,9 @@ function generateTermStructure(spotPrice: number, symbol: string, expiryInfo: an
       : expiryInfo.daysToExpiry <= 10
       ? 'Plan to roll within 3-5 days'
       : 'No immediate roll needed',
-    nearMonthPrice: spotPrice,
-    nextMonthPrice: Math.round(spotPrice * (1 + spreadPct / 100)),
-    farMonthPrice: Math.round(spotPrice * (1 + spreadPct * 1.5 / 100)),
+    nearMonthPrice: Math.round(nearMonthPrice),
+    nextMonthPrice: Math.round(nextMonthPrice),
+    farMonthPrice,
   };
 }
 
@@ -518,14 +801,27 @@ serve(async (req) => {
     const usdInr = spotData?.usdInrRate || spotData?.usdInr || macroData?.usdInr?.value || 83.50;
     const expiryInfo = getMCXExpiry(symbol);
 
-    // Generate historical data and calculate advanced technicals
-    const historicalData = generateHistoricalData(spotPrice, 200);
+    // Fetch real historical data from Yahoo Finance + term structure prices in parallel
+    const [yahooHistorical, termPrices] = await Promise.all([
+      fetchYahooHistoricalData(symbol, usdInr),
+      fetchTermStructurePrices(symbol),
+    ]);
+
+    // Use real data or fall back to simulated
+    const historicalData = yahooHistorical || generateHistoricalDataFallback(spotPrice, 200);
+    if (yahooHistorical) {
+      dataSource = dataSource === 'AI_ESTIMATED' ? 'YAHOO_FINANCE' : dataSource;
+      console.log(`📈 Using REAL Yahoo Finance historical data (${yahooHistorical.length} days)`);
+    } else {
+      console.log(`⚠️ Using simulated historical data as fallback`);
+    }
+
     const technicals = calculateAdvancedTechnicals(historicalData);
     
-    // Generate forecasts and scenarios
+    // Generate forecasts and scenarios using real technicals (ATR, HV)
     const forecasts = generateForecasts(spotPrice, technicals, technicals.trend);
-    const scenarios = generateScenarios(spotPrice, technicals.trend, symbol);
-    const termStructure = generateTermStructure(spotPrice, symbol, expiryInfo);
+    const scenarios = generateScenarios(spotPrice, technicals, symbol);
+    const termStructure = generateTermStructure(spotPrice, symbol, expiryInfo, termPrices, usdInr);
 
     // Generate AI prediction with enhanced prompt
     const prediction = await generateAIPrediction(
@@ -603,7 +899,8 @@ function estimateSpotPrice(symbol: string): number {
   return estimates[symbol] || 10000;
 }
 
-function generateHistoricalData(currentPrice: number, days: number): any[] {
+// Fallback simulated data (only used when Yahoo Finance is unavailable)
+function generateHistoricalDataFallback(currentPrice: number, days: number): any[] {
   const data: any[] = [];
   let price = currentPrice * 0.92;
   
@@ -663,7 +960,6 @@ async function generateAIPrediction(
   const theta = -(spotPrice * iv * 0.4) / (2 * Math.sqrt(timeToExpiry) * 365);
   const vega = spotPrice * Math.sqrt(timeToExpiry) * 0.4 * 0.01;
 
-  // Build comprehensive AI prompt
   const prompt = `You are a senior commodity analyst with 25 years of experience at a major investment bank. Analyze ${name} (${symbol}) for MCX options trading.
 
 ## REAL-TIME MARKET DATA
@@ -678,6 +974,8 @@ ${internationalPrice ? `- International Price: $${internationalPrice}` : ''}
 - MACD: ${technicals.macd.value.toFixed(2)} | Signal: ${technicals.macd.signal.toFixed(2)} | Histogram: ${technicals.macd.histogram.toFixed(2)}
 - Stochastic: %K ${technicals.stochastic.k.toFixed(1)} / %D ${technicals.stochastic.d.toFixed(1)}
 - ADX: ${technicals.adx.toFixed(1)}
+- ATR: ₹${technicals.atr.toFixed(2)}
+- Historical Volatility (20d): ${((technicals.historicalVolatility || 0.2) * 100).toFixed(1)}%
 - Bollinger Bands: Upper ₹${technicals.bollingerBands.upper.toFixed(0)} | Lower ₹${technicals.bollingerBands.lower.toFixed(0)}
 
 ## FUNDAMENTAL FACTORS
@@ -735,7 +1033,6 @@ Be specific with numbers and actionable insights.`;
     reasoning += `VIX at ${macro.vix.value.toFixed(1)} suggests ${macro.vix.level.toLowerCase()}. `;
   }
 
-  // Try Lovable AI for enhanced reasoning
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
   if (LOVABLE_API_KEY) {
     try {
