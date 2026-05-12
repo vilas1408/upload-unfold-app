@@ -105,13 +105,13 @@ const GreeksAnalysisCard = ({
                 {deltaInfo.label}
               </Badge>
             </div>
-            <div className="text-2xl font-bold">{greeks.delta.toFixed(3)}</div>
+            <div className="text-2xl font-bold">{safeGreeks.delta.toFixed(3)}</div>
             <div className="mt-2 space-y-1">
               <div className="text-xs text-muted-foreground">
-                {optionType === 'CALL' ? '↑' : '↓'} ₹{Math.abs(greeks.delta).toFixed(2)} per ₹1 move
+                {optionType === 'CALL' ? '↑' : '↓'} ₹{Math.abs(safeGreeks.delta).toFixed(2)} per ₹1 move
               </div>
               <div className="text-xs text-muted-foreground">
-                Probability ITM: ~{(Math.abs(greeks.delta) * 100).toFixed(0)}%
+                Probability ITM: ~{(Math.abs(safeGreeks.delta) * 100).toFixed(0)}%
               </div>
             </div>
           </div>
@@ -124,9 +124,9 @@ const GreeksAnalysisCard = ({
                 {gammaRisk.label} Risk
               </Badge>
             </div>
-            <div className="text-2xl font-bold">{greeks.gamma.toFixed(4)}</div>
+            <div className="text-2xl font-bold">{safeGreeks.gamma.toFixed(4)}</div>
             <div className="mt-2 text-xs text-muted-foreground">
-              Delta changes by {greeks.gamma.toFixed(4)} per ₹1 move
+              Delta changes by {safeGreeks.gamma.toFixed(4)} per ₹1 move
             </div>
           </div>
 
@@ -138,7 +138,7 @@ const GreeksAnalysisCard = ({
                 {thetaImpact.label}
               </Badge>
             </div>
-            <div className="text-2xl font-bold text-red-500">{greeks.theta.toFixed(2)}</div>
+            <div className="text-2xl font-bold text-red-500">{safeGreeks.theta.toFixed(2)}</div>
             <div className="mt-2 space-y-1">
               <div className="text-xs text-muted-foreground flex items-center gap-1">
                 <Clock className="h-3 w-3" />
@@ -158,9 +158,9 @@ const GreeksAnalysisCard = ({
                 {vegaImpact.label}
               </Badge>
             </div>
-            <div className="text-2xl font-bold">{greeks.vega.toFixed(2)}</div>
+            <div className="text-2xl font-bold">{safeGreeks.vega.toFixed(2)}</div>
             <div className="mt-2 text-xs text-muted-foreground">
-              ₹{greeks.vega.toFixed(2)} per 1% IV change
+              ₹{safeGreeks.vega.toFixed(2)} per 1% IV change
             </div>
           </div>
         </div>
