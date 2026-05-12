@@ -71,11 +71,20 @@ const GreeksAnalysisCard = ({
     return { label: 'Low', color: 'text-muted-foreground', sensitivity: 'Less IV sensitive' };
   };
 
-  const deltaInfo = getDeltaInterpretation(greeks.delta, optionType);
-  const gammaRisk = getGammaRisk(greeks.gamma);
-  const thetaImpact = getThetaImpact(greeks.theta, premium);
-  const vegaImpact = getVegaImpact(greeks.vega);
-  const dailyThetaLoss = Math.abs(greeks.theta) * lotSize;
+  const num = (v: any) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  const safeGreeks = {
+    delta: num(greeks?.delta),
+    gamma: num(greeks?.gamma),
+    theta: num(greeks?.theta),
+    vega: num(greeks?.vega),
+    rho: num(greeks?.rho),
+    interpretation: greeks?.interpretation,
+  };
+  const deltaInfo = getDeltaInterpretation(safeGreeks.delta, optionType);
+  const gammaRisk = getGammaRisk(safeGreeks.gamma);
+  const thetaImpact = getThetaImpact(safeGreeks.theta, num(premium) || 1);
+  const vegaImpact = getVegaImpact(safeGreeks.vega);
+  const dailyThetaLoss = Math.abs(safeGreeks.theta) * num(lotSize);
 
   return (
     <Card className="glass-strong border-border">
