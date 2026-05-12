@@ -1213,39 +1213,30 @@ Return this JSON format:
       const currentDay = istTime.getUTCDay(); // 0 = Sunday, 2 = Tuesday
       let daysUntilTuesday;
       
-      if (currentDay <= 2) {
-        // If today is Sun-Tue, get this Tuesday
+      if (currentDay < 2) {
+        // Sun-Mon → this Tuesday
         daysUntilTuesday = 2 - currentDay;
-      } else {
-        // If today is Wed-Sat, get next Tuesday
-        daysUntilTuesday = 7 - currentDay + 2;
-      }
-      
-      // If today is Tuesday but market is closed, skip to next Tuesday
-      if (daysUntilTuesday === 0 && marketClosed) {
+      } else if (currentDay === 2) {
+        // Today is Tuesday (expiry day) → roll to NEXT Tuesday for new entries
+        // (today's contract is expiring; not safe to recommend a fresh buy)
         daysUntilTuesday = 7;
-        console.log('Market closed on expiry day, moving to next Tuesday');
+        console.log('Today is expiry day → rolling to next Tuesday for new entries');
+      } else {
+        // Wed-Sat → next Tuesday
+        daysUntilTuesday = 7 - currentDay + 2;
       }
       
       const tuesday = new Date(istTime);
       tuesday.setUTCDate(istTime.getUTCDate() + daysUntilTuesday);
       expiryDateISO = tuesday.toISOString().split('T')[0];
       daysToExpiry = daysUntilTuesday;
-      isExpiryToday = daysUntilTuesday === 0;
+      isExpiryToday = false;
       
-      if (isExpiryToday) {
-        expiryDate = `TODAY (${tuesday.toLocaleDateString('en-GB', { 
-          day: '2-digit', 
-          month: 'short', 
-          year: 'numeric' 
-        }).toUpperCase()}) - EXIT BEFORE 3:15 PM`;
-      } else {
-        expiryDate = tuesday.toLocaleDateString('en-GB', { 
-          day: '2-digit', 
-          month: 'short', 
-          year: 'numeric' 
-        }).toUpperCase();
-      }
+      expiryDate = tuesday.toLocaleDateString('en-GB', { 
+        day: '2-digit', 
+        month: 'short', 
+        year: 'numeric' 
+      }).toUpperCase();
     } else {
       // Shares have monthly expiry on last Thursday of the month
       const currentMonth = istTime.getUTCMonth();
