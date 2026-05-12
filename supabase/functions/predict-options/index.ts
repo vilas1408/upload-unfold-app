@@ -1213,39 +1213,30 @@ Return this JSON format:
       const currentDay = istTime.getUTCDay(); // 0 = Sunday, 2 = Tuesday
       let daysUntilTuesday;
       
-      if (currentDay <= 2) {
-        // If today is Sun-Tue, get this Tuesday
+      if (currentDay < 2) {
+        // Sun-Mon → this Tuesday
         daysUntilTuesday = 2 - currentDay;
-      } else {
-        // If today is Wed-Sat, get next Tuesday
-        daysUntilTuesday = 7 - currentDay + 2;
-      }
-      
-      // If today is Tuesday but market is closed, skip to next Tuesday
-      if (daysUntilTuesday === 0 && marketClosed) {
+      } else if (currentDay === 2) {
+        // Today is Tuesday (expiry day) → roll to NEXT Tuesday for new entries
+        // (today's contract is expiring; not safe to recommend a fresh buy)
         daysUntilTuesday = 7;
-        console.log('Market closed on expiry day, moving to next Tuesday');
+        console.log('Today is expiry day → rolling to next Tuesday for new entries');
+      } else {
+        // Wed-Sat → next Tuesday
+        daysUntilTuesday = 7 - currentDay + 2;
       }
       
       const tuesday = new Date(istTime);
       tuesday.setUTCDate(istTime.getUTCDate() + daysUntilTuesday);
       expiryDateISO = tuesday.toISOString().split('T')[0];
       daysToExpiry = daysUntilTuesday;
-      isExpiryToday = daysUntilTuesday === 0;
+      isExpiryToday = false;
       
-      if (isExpiryToday) {
-        expiryDate = `TODAY (${tuesday.toLocaleDateString('en-GB', { 
-          day: '2-digit', 
-          month: 'short', 
-          year: 'numeric' 
-        }).toUpperCase()}) - EXIT BEFORE 3:15 PM`;
-      } else {
-        expiryDate = tuesday.toLocaleDateString('en-GB', { 
-          day: '2-digit', 
-          month: 'short', 
-          year: 'numeric' 
-        }).toUpperCase();
-      }
+      expiryDate = tuesday.toLocaleDateString('en-GB', { 
+        day: '2-digit', 
+        month: 'short', 
+        year: 'numeric' 
+      }).toUpperCase();
     } else {
       // Shares have monthly expiry on last Thursday of the month
       const currentMonth = istTime.getUTCMonth();
@@ -1262,12 +1253,14 @@ Return this JSON format:
         }
       }
       
-      // If the last Thursday is today but market closed, or has already passed, use next month's last Thursday
-      const isLastThursdayToday = lastThursday && 
-        lastThursday.getUTCDate() === currentDate && 
-        lastThursday.getUTCMonth() === currentMonth;
+      // If the last Thursday is today or has already passed, use next month's last Thursday
+      // (on expiry day, recommend next month's contract for new entries)
+      const isLastThursdayTodayOrPast = lastThursday && (
+        lastThursday < istTime ||
+        (lastThursday.getUTCDate() === currentDate && lastThursday.getUTCMonth() === currentMonth)
+      );
       
-      if (!lastThursday || lastThursday < istTime || (isLastThursdayToday && marketClosed)) {
+      if (!lastThursday || isLastThursdayTodayOrPast) {
         // Move to next month
         const nextMonth = currentMonth === 11 ? 0 : currentMonth + 1;
         const nextYear = currentMonth === 11 ? currentYear + 1 : currentYear;
@@ -1292,21 +1285,13 @@ Return this JSON format:
         daysToExpiry = 28;
       }
       
-      isExpiryToday = daysToExpiry === 0 && !marketClosed;
+      isExpiryToday = false;
       
-      if (isExpiryToday) {
-        expiryDate = `TODAY (${lastThursday!.toLocaleDateString('en-GB', { 
-          day: '2-digit', 
-          month: 'short', 
-          year: 'numeric' 
-        }).toUpperCase()}) - EXIT BEFORE 3:15 PM`;
-      } else {
-        expiryDate = lastThursday!.toLocaleDateString('en-GB', { 
-          day: '2-digit', 
-          month: 'short', 
-          year: 'numeric' 
-        }).toUpperCase();
-      }
+      expiryDate = lastThursday!.toLocaleDateString('en-GB', { 
+        day: '2-digit', 
+        month: 'short', 
+        year: 'numeric' 
+      }).toUpperCase();
     }
 
     // Create NSE format expiry date (DD-MMM-YYYY)
